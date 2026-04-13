@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     system_instruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: message }] }],
     generationConfig: {
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
       responseMimeType: 'application/json',
     },
   };
