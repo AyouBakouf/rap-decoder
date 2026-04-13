@@ -2,13 +2,21 @@
 
 Traducteur rap : paroles + traduction FR + décryptage des refs. Gemini 3 Flash + Google Search. Un album complet pour 7 centimes.
 
+<img width="1000" height="1000" alt="image" src="https://github.com/user-attachments/assets/1eb93c6b-b8a4-4d5b-852c-2d99228e5d7a" />
+
+
 ## Pourquoi
 
 On a tous un pote qui écoute 5 rappeurs et qui pense avoir fait le tour du genre. C'est pas de sa faute, c'est juste que personne lui a filé les clés pour écouter le reste. Quand t'as pas le contexte, du Ka ça ressemble à un mec qui marmonne, du billy woods c'est du charabia et Racionais MC's c'est juste du portugais.
 
+<img width="500" height="500" alt="image" src="https://github.com/user-attachments/assets/ee72e29b-aeb0-4123-a2dd-42dae0d5803f" />
+
+
 Ce tool, tu lui donnes un album, il va chercher les paroles, les traduit ligne par ligne en français et t'explique : le slang de Memphis, les refs bibliques, les métaphores politiques, le wordplay planqué. Ça marche en anglais, portugais, turc, russe, polonais, espagnol, japonais, français...
 
 Le rap c'est le genre musical le plus riche en texte qui existe et la plupart des gens en écoutent 2% parce que la barrière de la langue ou la densité fait peur. Ce truc est là pour casser cette barrière.
+
+<img width="500" height="500" alt="image" src="https://github.com/user-attachments/assets/b12d19e0-428f-47db-9a06-a74672f07a36" />
 
 ## Déployer (gratuit)
 
