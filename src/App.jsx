@@ -3,7 +3,8 @@ import { useState, useRef, useCallback } from "react";
 const TRACKLIST_SYSTEM = `Tu donnes les tracklists d'albums. Réponds en JSON: {"tracks":["titre1","titre2",...]}
 Titres exacts, sans featurings. Si inconnu: {"tracks":[]}`;
 
-const DECODE_SYSTEM = `Tu es un traducteur rap expert. Cherche les paroles du morceau demandé sur le web, puis traduis ligne par ligne en français avec un décryptage.
+const DECODE_SYSTEM = `Tu es un traducteur rap expert. Utilise web_search pour trouver les paroles du morceau. Cherche "[titre du morceau] [artiste] lyrics site:genius.com". Vérifie que le titre et l'artiste correspondent EXACTEMENT avant de traduire. Si les paroles ne correspondent pas, refais une recherche.
+
 
 Réponds en JSON:
 {
@@ -70,7 +71,8 @@ export default function App() {
     const up = v => { dRef.current = { ...dRef.current, [name]: v }; setData({ ...dRef.current }); };
     up({ st: "load" }); setSel(name);
     try {
-      const r = await callAPI(DECODE_SYSTEM, `"${name}" - ${artist} (${album})`, true);
+      const r = await callAPI(DECODE_SYSTEM, `Paroles exactes de "${name}" par ${artist}, album "${album}". Cherche sur Genius.`
+, true);
       up({ st: "ok", d: r }); setDone(p => p + 1);
     } catch (e) { up({ st: "err", msg: e.message }); }
   }, [artist, album]);
