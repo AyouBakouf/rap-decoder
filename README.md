@@ -12,7 +12,10 @@ On a tous un pote qui écoute 5 rappeurs et qui pense avoir fait le tour du genr
 <img width="500" height="500" alt="image" src="https://github.com/user-attachments/assets/ee72e29b-aeb0-4123-a2dd-42dae0d5803f" />
 
 
-Ce tool, tu lui donnes un album, il va chercher les paroles, les traduit ligne par ligne en français et t'explique : le slang de Memphis, les refs bibliques, les métaphores politiques, le wordplay planqué. Ça marche en anglais, portugais, turc, russe, polonais, espagnol, japonais, français...
+
+Ce tool, tu lui donnes un album, il va chercher les paroles, les traduit ligne par ligne en français et t'explique : le slang de Memphis, les refs bibliques, les métaphores politiques, le wordplay planqué.
+
+Ça marche en anglais, portugais, turc, russe, polonais, espagnol, japonais, français...
 
 Le rap c'est le genre musical le plus riche en texte qui existe et la plupart des gens en écoutent 2% parce que la barrière de la langue ou la densité fait peur. Ce truc est là pour casser cette barrière.
 
