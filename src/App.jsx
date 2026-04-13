@@ -21,7 +21,7 @@ Réponds en JSON:
 }
 
 "s"=section, "o"=original, "t"=traduction, "r"=référence, "e"=explication.
-Traduis le SENS pas mot à mot. Si français: "t"=null.
+Traduis le SENS pas mot à mot. Si français: "t"=null. IMPORTANT: inclus CHAQUE ligne du morceau sans exception, ne saute rien, même les lignes répétées ou les ad-libs.
 Décryptage uniquement sur les passages opaques.
 Si introuvable: {"found":false,"lang":"?","lines":[],"notes":[]}`;
 
