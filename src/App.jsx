@@ -1,108 +1,85 @@
 import { useState, useRef, useCallback } from “react”;
 
-const TRACKLIST_SYSTEM = `Tu donnes les tracklists d'albums. Réponds en JSON: {"tracks":["titre1","titre2",...]} Titres exacts, sans featurings. Si inconnu: {"tracks":[]}`;
+const TRACKLIST_SYSTEM = “Tu donnes les tracklists d’albums. Reponds en JSON: {"tracks":["titre1","titre2",…]} Titres exacts, sans featurings. Si inconnu: {"tracks":[]}”;
 
-const DECODE_SYSTEM = `Tu es un traducteur rap expert.
+const DECODE_SYSTEM = “Tu es un traducteur rap expert.\n\nETAPE 1: Utilise web_search pour trouver les paroles COMPLETES du morceau. Cherche "[titre] [artiste] lyrics site:genius.com". Verifie que le titre et l’artiste correspondent EXACTEMENT. Si ca matche pas, refais une recherche.\n\nETAPE 2: Traduis TOUTES les paroles ligne par ligne.\n\nREGLE ABSOLUE: Tu dois inclure CHAQUE ligne du morceau, du tout debut a la toute fin, dans l’ordre exact. Si le morceau a 3 couplets, les 3 doivent etre la. Si un refrain se repete 4 fois, il apparait 4 fois. Ne resume JAMAIS, ne saute JAMAIS un couplet ou un refrain. Le nombre de lignes originales et traduites doit etre IDENTIQUE aux paroles completes du morceau.\n\nReponds en JSON:\n{\n"found":true,\n"lang":"anglais",\n"lines":[\n{"s":"[Intro]"},\n{"o":"original line","t":"traduction francaise"},\n{"s":"[Couplet 1]"},\n{"o":"…","t":"…"},\n{"s":"[Refrain]"},\n{"o":"…","t":"…"},\n{"s":"[Couplet 2]"},\n{"o":"…","t":"…"}\n],\n"notes":[\n{"r":"mot/expression","e":"explication concise: slang, ref culturelle, wordplay, double sens"}\n]\n}\n\n"s"=section header, "o"=ligne originale, "t"=traduction francaise.\nTraduis le SENS pas mot a mot. Si francais: "t"=null.\nDecryptage uniquement sur les passages opaques.\nSi introuvable: {"found":false,"lang":"?","lines":[],"notes":[]}”;
 
-ÉTAPE 1: Utilise web_search pour trouver les paroles COMPLÈTES du morceau. Cherche “[titre] [artiste] lyrics site:genius.com”. Vérifie que le titre et l’artiste correspondent EXACTEMENT. Si ça matche pas, refais une recherche.
-
-ÉTAPE 2: Traduis TOUTES les paroles ligne par ligne.
-
-RÈGLE ABSOLUE: Tu dois inclure CHAQUE ligne du morceau, du tout début à la toute fin, dans l’ordre exact. Si le morceau a 3 couplets, les 3 doivent être là. Si un refrain se répète 4 fois, il apparaît 4 fois. Ne résume JAMAIS, ne saute JAMAIS un couplet ou un refrain. Le nombre de lignes originales et traduites doit être IDENTIQUE aux paroles complètes du morceau.
-
-Réponds en JSON:
-{
-“found”:true,
-“lang”:“anglais”,
-“lines”:[
-{“s”:”[Intro]”},
-{“o”:“original line”,“t”:“traduction française”},
-{“s”:”[Couplet 1]”},
-{“o”:”…”,“t”:”…”},
-{“s”:”[Refrain]”},
-{“o”:”…”,“t”:”…”},
-{“s”:”[Couplet 2]”},
-{“o”:”…”,“t”:”…”}
-],
-“notes”:[
-{“r”:“mot/expression”,“e”:“explication concise: slang, ref culturelle, wordplay, double sens”}
-]
-}
-
-“s”=section header, “o”=ligne originale, “t”=traduction française.
-Traduis le SENS pas mot à mot. Si français: “t”=null.
-Décryptage uniquement sur les passages opaques.
-Si introuvable: {“found”:false,“lang”:”?”,“lines”:[],“notes”:[]}`;
-
-async function callAPI(system, message, search = false) {
-const res = await fetch(”/api/gemini”, {
+async function callAPI(system, message, search) {
+if (search === undefined) search = false;
+var res = await fetch(”/api/gemini”, {
 method: “POST”,
 headers: { “Content-Type”: “application/json” },
-body: JSON.stringify({ system, message, search }),
+body: JSON.stringify({ system: system, message: message, search: search }),
 });
-const data = await res.json();
+var data = await res.json();
 if (data.error) throw new Error(data.error);
-const text = data.text || “”;
-const m = text.match(/{[\s\S]*}/);
+var text = data.text || “”;
+var m = text.match(/{[\s\S]*}/);
 if (!m) throw new Error(“No JSON in response”);
 return JSON.parse(m[0]);
 }
 
 export default function App() {
-const [album, setAlbum] = useState(””);
-const [artist, setArtist] = useState(””);
-const [tracks, setTracks] = useState([]);
-const [data, setData] = useState({});
-const [sel, setSel] = useState(null);
-const [view, setView] = useState(“input”);
-const [done, setDone] = useState(0);
-const [auto, setAuto] = useState(false);
-const [err, setErr] = useState(””);
-const stopRef = useRef(false);
-const dRef = useRef({});
-const [isMobile] = useState(() => window.innerWidth <= 700);
+var _a = useState(””), album = _a[0], setAlbum = _a[1];
+var _b = useState(””), artist = _b[0], setArtist = _b[1];
+var _c = useState([]), tracks = _c[0], setTracks = _c[1];
+var _d = useState({}), data = _d[0], setData = _d[1];
+var _e = useState(null), sel = _e[0], setSel = _e[1];
+var _f = useState(“input”), view = _f[0], setView = _f[1];
+var _g = useState(0), done = _g[0], setDone = _g[1];
+var _h = useState(false), auto = _h[0], setAuto = _h[1];
+var _i = useState(””), err = _i[0], setErr = _i[1];
+var stopRef = useRef(false);
+var dRef = useRef({});
+var isMobile = window.innerWidth <= 700;
 
-const go = async () => {
+var go = async function() {
 if (!album.trim() || !artist.trim()) return;
 setView(“loading”); setErr(””);
 try {
-const r = await callAPI(TRACKLIST_SYSTEM, `${album} - ${artist}`);
-if (r.tracks?.length) {
+var r = await callAPI(TRACKLIST_SYSTEM, album + “ - “ + artist);
+if (r.tracks && r.tracks.length) {
 setTracks(r.tracks); setDone(0); setView(“list”);
 } else { setErr(“Album introuvable”); setView(“error”); }
 } catch (e) { setErr(e.message); setView(“error”); }
 };
 
-const decode = useCallback(async (name) => {
-if (dRef.current[name]?.st === “ok”) { setSel(name); return; }
-const up = v => { dRef.current = { …dRef.current, [name]: v }; setData({ …dRef.current }); };
+var decode = useCallback(async function(name) {
+if (dRef.current[name] && dRef.current[name].st === “ok”) { setSel(name); return; }
+var up = function(v) {
+var next = Object.assign({}, dRef.current);
+next[name] = v;
+dRef.current = next;
+setData(Object.assign({}, dRef.current));
+};
 up({ st: “load” }); setSel(name);
 try {
-const r = await callAPI(DECODE_SYSTEM, `Trouve les paroles COMPLÈTES de "${name}" par ${artist}, album "${album}". Cherche sur Genius. Inclus tous les couplets, refrains, ponts et outros sans rien sauter.`, true);
-up({ st: “ok”, d: r }); setDone(p => p + 1);
+var r = await callAPI(DECODE_SYSTEM, “Trouve les paroles COMPLETES de "” + name + “" par “ + artist + “, album "” + album + “". Cherche sur Genius. Inclus tous les couplets, refrains, ponts et outros sans rien sauter.”, true);
+up({ st: “ok”, d: r }); setDone(function(p) { return p + 1; });
 } catch (e) { up({ st: “err”, msg: e.message }); }
 }, [artist, album]);
 
-const decodeAll = useCallback(async () => {
+var decodeAll = useCallback(async function() {
 stopRef.current = false; setAuto(true);
-for (const t of tracks) {
+for (var i = 0; i < tracks.length; i++) {
 if (stopRef.current) break;
-if (dRef.current[t]?.st === “ok”) continue;
+var t = tracks[i];
+if (dRef.current[t] && dRef.current[t].st === “ok”) continue;
 await decode(t);
-await new Promise(r => setTimeout(r, 300));
+await new Promise(function(r) { setTimeout(r, 300); });
 }
 setAuto(false);
 }, [tracks, decode]);
 
-const reset = () => {
+var reset = function() {
 stopRef.current = true; setView(“input”); setTracks([]); setData({});
 dRef.current = {}; setSel(null); setAuto(false); setDone(0);
 };
 
-const cur = sel && data[sel];
-const curD = cur?.d;
-const showSidebar = !isMobile || !sel;
-const showDetail = !isMobile || sel;
+var cur = sel && data[sel];
+var curD = cur ? cur.d : null;
+var showSidebar = !isMobile || !sel;
+var showDetail = !isMobile || sel;
 
 return (
 <div style={S.root}>
@@ -110,19 +87,19 @@ return (
 
 ```
   <div style={S.header}>
-    <div style={S.logo}>翻</div>
+    <div style={S.logo}>{"翻"}</div>
     <div style={{ flex: 1 }}>
       <div style={S.title}>RAP DECODER</div>
-      <div style={{ fontSize: 8, color: "#333" }}>gemini 3 flash · google search · traduction</div>
+      <div style={{ fontSize: 8, color: "#333" }}>gemini 3 flash - google search - traduction</div>
     </div>
-    {view !== "input" && <button onClick={reset} style={S.back}>←</button>}
+    {view !== "input" && <button onClick={reset} style={S.back}>{"<-"}</button>}
   </div>
 
   {view === "input" && (
     <div style={S.inputWrap}>
       <Inp label="Artiste" val={artist} set={setArtist} ph="Denzel Curry" enter={go} />
       <Inp label="Album" val={album} set={setAlbum} ph="Melt My Eyez See Your Future" enter={go} />
-      <button onClick={go} style={S.goBtn}>Décoder</button>
+      <button onClick={go} style={S.goBtn}>Decoder</button>
     </div>
   )}
 
@@ -130,35 +107,38 @@ return (
   {view === "error" && (
     <div style={S.center}>
       <div style={{ color: "#ef4444", fontSize: 11, marginBottom: 10 }}>{err}</div>
-      <button onClick={() => setView("input")} style={S.retryBtn}>Retour</button>
+      <button onClick={function() { setView("input"); }} style={S.retryBtn}>Retour</button>
     </div>
   )}
 
   {view === "list" && (
     <div style={S.main}>
       {showSidebar && (
-        <div style={{ ...S.sidebar, width: isMobile ? "100%" : 260, minWidth: isMobile ? 0 : 260 }}>
+        <div style={Object.assign({}, S.sidebar, { width: isMobile ? "100%" : 260, minWidth: isMobile ? 0 : 260 })}>
           <div style={S.sideHeader}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={S.albumTitle}>{album}</div>
-              <div style={S.albumSub}>{artist} · {done}/{tracks.length}</div>
+              <div style={S.albumSub}>{artist + " - " + done + "/" + tracks.length}</div>
             </div>
-            <button onClick={auto ? () => { stopRef.current = true; setAuto(false); } : decodeAll}
-              style={{ ...S.allBtn, borderColor: auto ? "#ef4444" : "#222", color: auto ? "#ef4444" : "#f0c040" }}>
+            <button onClick={auto ? function() { stopRef.current = true; setAuto(false); } : decodeAll}
+              style={Object.assign({}, S.allBtn, { borderColor: auto ? "#ef4444" : "#222", color: auto ? "#ef4444" : "#f0c040" })}>
               {auto ? "Stop" : "Tout"}
             </button>
           </div>
-          {tracks.map((t, i) => {
-            const st = data[t]?.st || "idle";
-            const isSel = sel === t;
+          {tracks.map(function(t, i) {
+            var st = (data[t] && data[t].st) || "idle";
+            var isSel = sel === t;
+            var colors = { idle: "#222", load: "#f0c040", ok: "#4ade80", err: "#ef4444" };
             return (
-              <div key={i} onClick={() => decode(t)} style={{
-                ...S.trackRow, background: isSel ? "#131313" : "transparent",
+              <div key={i} onClick={function() { decode(t); }} style={Object.assign({}, S.trackRow, {
+                background: isSel ? "#131313" : "transparent",
                 borderLeft: isSel ? "2px solid #f0c040" : "2px solid transparent",
-              }}>
-                <span style={{ ...S.dot, background: { idle: "#222", load: "#f0c040", ok: "#4ade80", err: "#ef4444" }[st],
-                  animation: st === "load" ? "pulse 1s infinite" : "none" }} />
-                <span style={{ ...S.trackName, color: isSel ? "#ccc" : "#555" }}>
+              })}>
+                <span style={Object.assign({}, S.dot, {
+                  background: colors[st] || "#222",
+                  animation: st === "load" ? "pulse 1s infinite" : "none",
+                })} />
+                <span style={Object.assign({}, S.trackName, { color: isSel ? "#ccc" : "#555" })}>
                   <span style={{ color: "#2a2a2a", marginRight: 6 }}>{String(i + 1).padStart(2, "0")}</span>{t}
                 </span>
               </div>
@@ -169,14 +149,14 @@ return (
 
       {showDetail && sel && (
         <div style={S.detail}>
-          {isMobile && <button onClick={() => setSel(null)} style={{ ...S.back, marginBottom: 12 }}>← morceaux</button>}
+          {isMobile && <button onClick={function() { setSel(null); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- morceaux"}</button>}
 
-          {cur?.st === "load" && <div style={S.center}><div style={S.spinner} /><div style={S.dim}>Recherche + traduction...</div></div>}
+          {cur && cur.st === "load" && <div style={S.center}><div style={S.spinner} /><div style={S.dim}>Recherche + traduction...</div></div>}
 
-          {cur?.st === "err" && (
+          {cur && cur.st === "err" && (
             <div style={S.center}>
               <div style={{ color: "#ef4444", fontSize: 11, marginBottom: 8 }}>{cur.msg}</div>
-              <button onClick={() => { delete dRef.current[sel]; setData({ ...dRef.current }); decode(sel); }} style={S.retryBtn}>Réessayer</button>
+              <button onClick={function() { delete dRef.current[sel]; setData(Object.assign({}, dRef.current)); decode(sel); }} style={S.retryBtn}>Reessayer</button>
             </div>
           )}
 
@@ -185,31 +165,37 @@ return (
               <div style={{ marginBottom: 16 }}>
                 <div style={S.trackTitle}>{sel}</div>
                 <div style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
-                  <span style={{ ...S.tag, color: "#888" }}>{curD.lang}</span>
-                  {curD.found ? <span style={{ ...S.tag, color: "#4ade80" }}>lyrics trouvées</span> : <span style={{ ...S.tag, color: "#f0c040" }}>approximatif</span>}
+                  <span style={Object.assign({}, S.tag, { color: "#888" })}>{curD.lang}</span>
+                  {curD.found
+                    ? <span style={Object.assign({}, S.tag, { color: "#4ade80" })}>lyrics trouvees</span>
+                    : <span style={Object.assign({}, S.tag, { color: "#f0c040" })}>approximatif</span>}
                 </div>
               </div>
 
-              {curD.lines?.length > 0 && (
+              {curD.lines && curD.lines.length > 0 && (
                 <Fold title="PAROLES + TRADUCTION" color="#4ade80">
-                  {curD.lines.map((l, i) => l.s
-                    ? <div key={i} style={S.section}>{l.s}</div>
-                    : <div key={i} style={S.linePair}>
+                  {curD.lines.map(function(l, i) {
+                    if (l.s) return <div key={i} style={S.section}>{l.s}</div>;
+                    return (
+                      <div key={i} style={S.linePair}>
                         <div style={S.og}>{l.o}</div>
                         {l.t && <div style={S.tr}>{l.t}</div>}
                       </div>
-                  )}
+                    );
+                  })}
                 </Fold>
               )}
 
-              {curD.notes?.length > 0 && (
-                <Fold title="DÉCRYPTAGE" color="#e05030">
-                  {curD.notes.map((n, i) => (
-                    <div key={i} style={S.note}>
-                      <div style={S.noteRef}>{n.r}</div>
-                      <div style={S.noteExp}>{n.e}</div>
-                    </div>
-                  ))}
+              {curD.notes && curD.notes.length > 0 && (
+                <Fold title="DECRYPTAGE" color="#e05030">
+                  {curD.notes.map(function(n, i) {
+                    return (
+                      <div key={i} style={S.note}>
+                        <div style={S.noteRef}>{n.r}</div>
+                        <div style={S.noteExp}>{n.e}</div>
+                      </div>
+                    );
+                  })}
                 </Fold>
               )}
             </div>
@@ -224,34 +210,34 @@ return (
 );
 }
 
-function Fold({ title, color, children }) {
-const [open, setOpen] = useState(true);
+function Fold(props) {
+var _a = useState(true), open = _a[0], setOpen = _a[1];
 return (
 <div style={{ marginBottom: 18 }}>
-<div onClick={() => setOpen(!open)} style={S.foldHeader}>
-<div style={{ width: 3, height: 11, background: color, borderRadius: 2 }} />
-<span style={S.foldTitle}>{title}</span>
-<span style={{ fontSize: 10, color: “#222”, marginLeft: “auto” }}>{open ? “▾” : “▸”}</span>
+<div onClick={function() { setOpen(!open); }} style={S.foldHeader}>
+<div style={{ width: 3, height: 11, background: props.color, borderRadius: 2 }} />
+<span style={S.foldTitle}>{props.title}</span>
+<span style={{ fontSize: 10, color: “#222”, marginLeft: “auto” }}>{open ? “v” : “>”}</span>
 </div>
-{open && <div style={S.foldBody}>{children}</div>}
+{open && <div style={S.foldBody}>{props.children}</div>}
 </div>
 );
 }
 
-function Inp({ label, val, set, ph, enter }) {
+function Inp(props) {
 return (
 <div style={{ marginBottom: 16 }}>
-<div style={{ fontSize: 9, color: “#333”, textTransform: “uppercase”, letterSpacing: 1.5, marginBottom: 4 }}>{label}</div>
-<input value={val} onChange={e => set(e.target.value)} placeholder={ph}
-onKeyDown={e => e.key === “Enter” && enter?.()}
+<div style={{ fontSize: 9, color: “#333”, textTransform: “uppercase”, letterSpacing: 1.5, marginBottom: 4 }}>{props.label}</div>
+<input value={props.val} onChange={function(e) { props.set(e.target.value); }} placeholder={props.ph}
+onKeyDown={function(e) { if (e.key === “Enter” && props.enter) props.enter(); }}
 style={S.input} />
 </div>
 );
 }
 
-const CSS = `@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap'); @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes spin{to{transform:rotate(360deg)}} input::placeholder{color:#2a2a2a} *::-webkit-scrollbar{width:4px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{background:#1a1a1a;border-radius:2px}`;
+var CSS = “@import url(‘https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap’);@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes spin{to{transform:rotate(360deg)}}input::placeholder{color:#2a2a2a}*::-webkit-scrollbar{width:4px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{background:#1a1a1a;border-radius:2px}”;
 
-const S = {
+var S = {
 root: { minHeight: “100vh”, background: “#0a0a0a”, color: “#ddd”, fontFamily: “‘JetBrains Mono’,monospace” },
 header: { padding: “13px 16px”, borderBottom: “1px solid #141414”, display: “flex”, alignItems: “center”, gap: 10 },
 logo: { width: 26, height: 26, borderRadius: 5, background: “linear-gradient(135deg,#f0c040,#e05030)”, display: “flex”, alignItems: “center”, justifyContent: “center”, fontSize: 12, fontWeight: 700, color: “#0a0a0a”, flexShrink: 0 },
