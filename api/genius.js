@@ -7,56 +7,43 @@ export default async function handler(req, res) {
   var title = req.body.title || "";
   var artist = req.body.artist || "";
 
+  // Clean title for better search
+  var cleanTitle = title.replace(/[.,'!?#\(\)]/g, " ").replace(/\s+/g, " ").trim();
+
   try {
-    // Step 1: Search Genius
-    var searchUrl = "https://api.genius.com/search?q=" + encodeURIComponent(title + " " + artist);
-    var searchRes = await fetch(searchUrl, {
-      headers: { "Authorization": "Bearer " + token }
-    });
-    var searchData = await searchRes.json();
-    var hits = (searchData.response && searchData.response.hits) || [];
-
-    if (hits.length === 0) {
-      return res.status(200).json({ found: false, lyrics: "", source: "" });
-    }
-
-    // Find best match
+    // Try multiple search strategies
     var song = null;
-    var artistLower = artist.toLowerCase();
-    for (var i = 0; i < hits.length; i++) {
-      var hit = hits[i];
-      if (hit.type === "song" && hit.result) {
-        var primaryArtist = (hit.result.primary_artist && hit.result.primary_artist.name) || "";
-        if (primaryArtist.toLowerCase().indexOf(artistLower) !== -1 || artistLower.indexOf(primaryArtist.toLowerCase()) !== -1) {
-          song = hit.result;
-          break;
-        }
-      }
+
+    // Strategy 1: title + artist
+    song = await searchGenius(cleanTitle + " " + artist, artist, token);
+
+    // Strategy 2: just title (sometimes artist in title causes issues)
+    if (!song) {
+      song = await searchGenius(cleanTitle, artist, token);
     }
-    if (!song && hits[0] && hits[0].result) {
-      song = hits[0].result;
+
+    // Strategy 3: first few words of title + artist
+    if (!song && cleanTitle.split(" ").length > 3) {
+      var shortTitle = cleanTitle.split(" ").slice(0, 3).join(" ");
+      song = await searchGenius(shortTitle + " " + artist, artist, token);
     }
+
     if (!song) {
       return res.status(200).json({ found: false, lyrics: "", source: "" });
     }
 
-    // Step 2: Fetch lyrics page
-    var pageUrl = song.url;
-    var pageRes = await fetch(pageUrl);
+    // Fetch lyrics page
+    var pageRes = await fetch(song.url);
     var html = await pageRes.text();
 
-    // Step 3: Extract lyrics from HTML
-    // Genius puts lyrics in data-lyrics-container divs
+    // Extract lyrics from HTML
     var lyrics = "";
     var regex = /data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/g;
     var match;
     while ((match = regex.exec(html)) !== null) {
       var chunk = match[1];
-      // Replace <br/> with newlines
       chunk = chunk.replace(/<br\s*\/?>/gi, "\n");
-      // Remove HTML tags
       chunk = chunk.replace(/<[^>]+>/g, "");
-      // Decode HTML entities
       chunk = chunk.replace(/&amp;/g, "&");
       chunk = chunk.replace(/&lt;/g, "<");
       chunk = chunk.replace(/&gt;/g, ">");
@@ -70,13 +57,13 @@ export default async function handler(req, res) {
     lyrics = lyrics.trim();
 
     if (lyrics.length < 20) {
-      return res.status(200).json({ found: false, lyrics: "", source: pageUrl });
+      return res.status(200).json({ found: false, lyrics: "", source: song.url });
     }
 
     return res.status(200).json({
       found: true,
       lyrics: lyrics,
-      source: pageUrl,
+      source: song.url,
       title: song.title,
       artist: (song.primary_artist && song.primary_artist.name) || artist
     });
@@ -84,4 +71,38 @@ export default async function handler(req, res) {
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
+}
+
+async function searchGenius(query, artist, token) {
+  var searchUrl = "https://api.genius.com/search?q=" + encodeURIComponent(query);
+  var searchRes = await fetch(searchUrl, {
+    headers: { "Authorization": "Bearer " + token }
+  });
+  var searchData = await searchRes.json();
+  var hits = (searchData.response && searchData.response.hits) || [];
+
+  if (hits.length === 0) return null;
+
+  var artistLower = artist.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  // First pass: match artist
+  for (var i = 0; i < hits.length; i++) {
+    var hit = hits[i];
+    if (hit.type === "song" && hit.result) {
+      var primaryArtist = (hit.result.primary_artist && hit.result.primary_artist.name) || "";
+      var primaryLower = primaryArtist.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (primaryLower.indexOf(artistLower) !== -1 || artistLower.indexOf(primaryLower) !== -1) {
+        return hit.result;
+      }
+    }
+  }
+
+  // Second pass: take first song result regardless of artist
+  for (var j = 0; j < hits.length; j++) {
+    if (hits[j].type === "song" && hits[j].result) {
+      return hits[j].result;
+    }
+  }
+
+  return null;
 }
