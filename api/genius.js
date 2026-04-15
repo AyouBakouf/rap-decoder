@@ -6,54 +6,59 @@ export default async function handler(req, res) {
   var artist = req.body.artist || "";
   var cleanTitle = title.replace(/[.,'!?#\(\)]/g, " ").replace(/\s+/g, " ").trim();
   try {
-    var song = null;
-    song = await searchGenius(cleanTitle + " " + artist, artist, token);
+    // Step 1: Use Genius to find correct song name and artist
+    var song = await searchGenius(cleanTitle + " " + artist, artist, token);
     if (!song) song = await searchGenius(cleanTitle, artist, token);
-    if (!song) return res.status(200).json({ found: false, lyrics: "", source: "" });
-    var songId = song.id;
-    var lyrics = await fetchLyricsFromEmbed(songId);
-    if (!lyrics || lyrics.length < 30) lyrics = await fetchLyricsFromPage(song.url);
-    lyrics = (lyrics || "").trim();
-    if (lyrics.length < 20) return res.status(200).json({ found: false, lyrics: "", source: song.url });
-    return res.status(200).json({ found: true, lyrics: lyrics, source: song.url, title: song.title, artist: (song.primary_artist && song.primary_artist.name) || artist });
+    var songTitle = song ? song.title : title;
+    var songArtist = (song && song.primary_artist && song.primary_artist.name) ? song.primary_artist.name : artist;
+    var geniusUrl = song ? song.url : "";
+    // Step 2: Get lyrics from lrclib (direct API, no scraping)
+    var lyrics = await fetchFromLrclib(songArtist, songTitle);
+    // Step 3: Fallback - try with original title/artist
+    if (!lyrics && song) lyrics = await fetchFromLrclib(artist, title);
+    // Step 4: Fallback - try lyrics.ovh
+    if (!lyrics) lyrics = await fetchFromLyricsOvh(songArtist, songTitle);
+    if (!lyrics) lyrics = await fetchFromLyricsOvh(artist, title);
+    if (!lyrics || lyrics.length < 20) {
+      return res.status(200).json({ found: false, lyrics: "", source: geniusUrl });
+    }
+    return res.status(200).json({ found: true, lyrics: lyrics, source: geniusUrl, title: songTitle, artist: songArtist });
   } catch (e) { return res.status(500).json({ error: e.message }); }
 }
-async function fetchLyricsFromEmbed(songId) {
+async function fetchFromLrclib(artist, title) {
   try {
-    var r = await fetch("https://genius.com/songs/" + songId + "/embed.js", { headers: { "User-Agent": "Mozilla/5.0 Chrome/120.0.0.0" } });
-    var text = await r.text();
-    var htmlMatch = text.match(/document\.write\(JSON\.parse\('(.+)'\)\)/s);
-    if (htmlMatch) { var decoded = htmlMatch[1].replace(/\\'/g, "'").replace(/\\n/g, "\n").replace(/\\\\/g, "\\"); return cleanHTML(decoded); }
-    var bracketMatch = text.match(/(\[(?:Verse|Intro|Chorus|Hook|Outro|Bridge|Refrain)[^\]]*\][\s\S]+)/);
-    if (bracketMatch) return cleanHTML(bracketMatch[1]);
+    // Try exact match first
+    var url = "https://lrclib.net/api/get?artist_name=" + encodeURIComponent(artist) + "&track_name=" + encodeURIComponent(title);
+    var r = await fetch(url);
+    if (r.ok) {
+      var data = await r.json();
+      var lyrics = data.plainLyrics || "";
+      if (lyrics.length > 30) return lyrics;
+    }
+    // Try search
+    var searchUrl = "https://lrclib.net/api/search?artist_name=" + encodeURIComponent(artist) + "&track_name=" + encodeURIComponent(title);
+    var r2 = await fetch(searchUrl);
+    if (r2.ok) {
+      var results = await r2.json();
+      if (results && results.length > 0) {
+        var best = results[0];
+        var lyrics2 = best.plainLyrics || "";
+        if (lyrics2.length > 30) return lyrics2;
+      }
+    }
   } catch (e) {}
   return "";
 }
-async function fetchLyricsFromPage(pageUrl) {
+async function fetchFromLyricsOvh(artist, title) {
   try {
-    var r = await fetch(pageUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", "Accept": "text/html" } });
-    var html = await r.text();
-    var lyrics = ""; var m;
-    var regex1 = /data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/g;
-    while ((m = regex1.exec(html)) !== null) lyrics = lyrics + cleanHTML(m[1]) + "\n";
-    if (lyrics.trim().length > 30) return lyrics.trim();
-    lyrics = "";
-    var regex2 = /class="[^"]*Lyrics__Container[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
-    while ((m = regex2.exec(html)) !== null) lyrics = lyrics + cleanHTML(m[1]) + "\n";
-    if (lyrics.trim().length > 30) return lyrics.trim();
+    var url = "https://api.lyrics.ovh/v1/" + encodeURIComponent(artist) + "/" + encodeURIComponent(title);
+    var r = await fetch(url);
+    if (r.ok) {
+      var data = await r.json();
+      if (data.lyrics && data.lyrics.length > 30) return data.lyrics.trim();
+    }
   } catch (e) {}
   return "";
-}
-function cleanHTML(chunk) {
-  chunk = chunk.replace(/\\n/g, "\n");
-  chunk = chunk.replace(/<br\s*\/?>/gi, "\n");
-  chunk = chunk.replace(/<\/p>/gi, "\n");
-  chunk = chunk.replace(/<[^>]+>/g, "");
-  chunk = chunk.replace(/&amp;/g, "&"); chunk = chunk.replace(/&lt;/g, "<"); chunk = chunk.replace(/&gt;/g, ">");
-  chunk = chunk.replace(/&#x27;/g, "'"); chunk = chunk.replace(/&quot;/g, '"'); chunk = chunk.replace(/&#39;/g, "'");
-  chunk = chunk.replace(/&nbsp;/g, " "); chunk = chunk.replace(/&#x2019;/g, "'"); chunk = chunk.replace(/&#x2018;/g, "'");
-  chunk = chunk.replace(/\n{3,}/g, "\n\n");
-  return chunk.trim();
 }
 async function searchGenius(query, artist, token) {
   var r = await fetch("https://api.genius.com/search?q=" + encodeURIComponent(query), { headers: { "Authorization": "Bearer " + token } });
