@@ -4,13 +4,20 @@ export default async function handler(req, res) {
   var apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
 
+  var baseUrl = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+  var model = process.env.ANTHROPIC_MODEL || "claude-opus-4-6";
+
   var system = req.body.system || "";
   var message = req.body.message || "";
   var search = req.body.search || false;
 
   var body = {
-    model: "claude-sonnet-4-20250514",
+    model: model,
     max_tokens: 16384,
+    thinking: {
+      type: "enabled",
+      budget_tokens: 10000,
+    },
     system: system + "\n\nRéponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.",
     messages: [{ role: "user", content: message }],
   };
@@ -20,7 +27,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    var response = await fetch("https://api.anthropic.com/v1/messages", {
+    var response = await fetch(baseUrl + "/v1/messages", {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
