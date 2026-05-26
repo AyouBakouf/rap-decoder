@@ -3,43 +3,24 @@ export default async function handler(req, res) {
   var baseUrl = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
   var model = process.env.ANTHROPIC_MODEL || "claude-opus-4-6";
 
-  // GET = debug test reproducing the translation path (thinking ON, no search, provided lyrics)
+  // GET = quick health check
   if (req.method === 'GET') {
     if (!apiKey) return res.status(200).json({ status: "FAIL", reason: "ANTHROPIC_API_KEY not set" });
     try {
-      var fakeLyrics = "Yeah, I been on my grind\nMoney on my mind\nLeft them all behind\nNow I'm one of a kind";
-      var testBody = {
-        model: model,
-        max_tokens: 32000,
-        thinking: { type: "enabled", budget_tokens: 8000 },
-        system: 'Traduis ce rap ligne par ligne. Reponds UNIQUEMENT en JSON: {"lang":"anglais","lines":[{"o":"ligne","t":"trad","c":90}]}',
-        messages: [{ role: "user", content: "Paroles:\n\n" + fakeLyrics }],
-      };
       var testRes = await fetch(baseUrl + "/v1/messages", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify(testBody),
+        body: JSON.stringify({ model: model, max_tokens: 100, messages: [{ role: "user", content: 'Reponds: {"ok":true}' }] }),
       });
       var raw = await testRes.text();
-      var parsed = null;
-      try { parsed = JSON.parse(raw); } catch (e) {}
-      var info = {};
-      if (parsed) {
-        info.stop_reason = parsed.stop_reason;
-        info.usage = parsed.usage;
-        info.block_types = (parsed.content || []).map(function(c){ return c.type; });
-        var t = "";
-        (parsed.content || []).forEach(function(c){ if (c.type === "text") t += c.text; });
-        info.text_preview = t.slice(0, 500);
-        info.text_length = t.length;
-      }
+      var p = null; try { p = JSON.parse(raw); } catch (e) {}
       return res.status(200).json({
         status: testRes.ok ? "OK" : "FAIL",
         httpStatus: testRes.status,
         baseUrl: baseUrl,
         model: model,
-        info: info,
-        raw: parsed ? undefined : raw.slice(0, 2000),
+        maxOutputTokens: p && p.usage ? p.usage.output_tokens : null,
+        raw: p ? undefined : raw.slice(0, 1000),
       });
     } catch (e) {
       return res.status(200).json({ status: "FAIL", error: e.message, baseUrl: baseUrl, model: model });
@@ -55,9 +36,8 @@ export default async function handler(req, res) {
 
   var body = {
     model: model,
-    max_tokens: 32000,
-    thinking: { type: "enabled", budget_tokens: 8000 },
-    system: system + "\n\nReponds UNIQUEMENT avec un objet JSON valide. Pas de markdown, pas de backticks.",
+    max_tokens: 16000,
+    system: system + "\n\nReponds UNIQUEMENT avec un objet JSON valide. Pas de markdown, pas de backticks, pas de texte avant ou apres.",
     messages: [{ role: "user", content: message }],
   };
   if (search) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
@@ -79,6 +59,9 @@ export default async function handler(req, res) {
     if (!text) {
       var types = (dataP.content || []).map(function(c){ return c.type; });
       return res.status(500).json({ error: "Reponse vide (stop: " + dataP.stop_reason + ", blocs: " + types.join(",") + ")" });
+    }
+    if (dataP.stop_reason === "max_tokens") {
+      return res.status(500).json({ error: "Morceau trop long (sortie coupee). Reessaie ou raccourcis." });
     }
     var cleaned = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
     var jm = cleaned.match(/\{[\s\S]*\}/);
