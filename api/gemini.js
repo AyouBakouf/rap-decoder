@@ -49,10 +49,10 @@ export default async function handler(req, res) {
 
   var body = {
     model: model,
-    max_tokens: 16384,
+    max_tokens: 32000,
     thinking: {
       type: "enabled",
-      budget_tokens: 10000,
+      budget_tokens: 8000,
     },
     system: system + "\n\nTu DOIS répondre UNIQUEMENT avec un objet JSON valide. Pas de markdown, pas de backticks, pas de texte avant ou après le JSON.",
     messages: [{ role: "user", content: message }],
