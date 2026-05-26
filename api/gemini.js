@@ -18,7 +18,7 @@ export default async function handler(req, res) {
       type: "enabled",
       budget_tokens: 10000,
     },
-    system: system + "\n\nRéponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.",
+    system: system + "\n\nTu DOIS répondre UNIQUEMENT avec un objet JSON valide. Pas de markdown, pas de backticks, pas de texte avant ou après le JSON.",
     messages: [{ role: "user", content: message }],
   };
 
@@ -43,6 +43,7 @@ export default async function handler(req, res) {
       return res.status(response.status || 500).json({ error: data.error.message || 'Claude error' });
     }
 
+    // Extract only text blocks (skip thinking blocks)
     var text = "";
     var content = data.content || [];
     for (var i = 0; i < content.length; i++) {
@@ -51,7 +52,19 @@ export default async function handler(req, res) {
       }
     }
 
-    res.status(200).json({ text: text });
+    // Clean up: strip markdown fences and surrounding text to find JSON
+    var cleaned = text.trim();
+    // Remove ```json ... ``` wrapping
+    cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+    cleaned = cleaned.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+
+    // Try to extract JSON object if there's text around it
+    var jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+
+    res.status(200).json({ text: cleaned });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
