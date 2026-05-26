@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   var apiKey = process.env.ANTHROPIC_API_KEY;
-  var baseUrl = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+  var baseUrl = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
   var model = process.env.ANTHROPIC_MODEL || "claude-opus-4-6";
 
   // GET = debug test
