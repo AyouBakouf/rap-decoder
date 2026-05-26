@@ -65,7 +65,10 @@ export default async function handler(req, res) {
     }
     var cleaned = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
     var jm = cleaned.match(/\{[\s\S]*\}/);
-    if (jm) cleaned = jm[0];
+    if (!jm) {
+      return res.status(500).json({ error: "Pas de JSON. Le modele a repondu: " + cleaned.slice(0, 300) });
+    }
+    cleaned = jm[0];
     res.status(200).json({ text: cleaned });
   } catch (e) {
     res.status(500).json({ error: e.message });
