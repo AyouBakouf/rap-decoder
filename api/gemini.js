@@ -1,47 +1,47 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  var apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
 
   var system = req.body.system || "";
   var message = req.body.message || "";
   var search = req.body.search || false;
 
   var body = {
-    system_instruction: { parts: [{ text: system }] },
-    contents: [{ role: 'user', parts: [{ text: message }] }],
-    generationConfig: {
-      maxOutputTokens: 65536,
-      responseMimeType: 'application/json',
-      thinkingConfig: {
-        thinkingBudget: 0
-      }
-    },
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 16384,
+    system: system + "\n\nRéponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.",
+    messages: [{ role: "user", content: message }],
   };
 
   if (search) {
-    body.tools = [{ google_search: {} }];
+    body.tools = [{ type: "web_search_20250305", name: "web_search" }];
   }
 
   try {
-    var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + apiKey;
-    var response = await fetch(url, {
+    var response = await fetch("https://api.anthropic.com/v1/messages", {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
       body: JSON.stringify(body),
     });
 
     var data = await response.json();
 
     if (data.error) {
-      return res.status(response.status).json({ error: data.error.message || 'Gemini error' });
+      return res.status(response.status || 500).json({ error: data.error.message || 'Claude error' });
     }
 
-    var parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
     var text = "";
-    for (var i = 0; i < parts.length; i++) {
-      if (parts[i].text) text = text + parts[i].text;
+    var content = data.content || [];
+    for (var i = 0; i < content.length; i++) {
+      if (content[i].type === "text" && content[i].text) {
+        text = text + content[i].text;
+      }
     }
 
     res.status(200).json({ text: text });
