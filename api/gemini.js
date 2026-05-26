@@ -1,74 +1,64 @@
 export default async function handler(req, res) {
-  var apiKey = process.env.ANTHROPIC_API_KEY;
-  var baseUrl = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
-  var model = process.env.ANTHROPIC_MODEL || "claude-opus-4-6";
-
-  // GET = quick health check
-  if (req.method === 'GET') {
-    if (!apiKey) return res.status(200).json({ status: "FAIL", reason: "ANTHROPIC_API_KEY not set" });
-    try {
-      var testRes = await fetch(baseUrl + "/v1/messages", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: model, max_tokens: 100, messages: [{ role: "user", content: 'Reponds: {"ok":true}' }] }),
-      });
-      var raw = await testRes.text();
-      var p = null; try { p = JSON.parse(raw); } catch (e) {}
-      return res.status(200).json({
-        status: testRes.ok ? "OK" : "FAIL",
-        httpStatus: testRes.status,
-        baseUrl: baseUrl,
-        model: model,
-        maxOutputTokens: p && p.usage ? p.usage.output_tokens : null,
-        raw: p ? undefined : raw.slice(0, 1000),
-      });
-    } catch (e) {
-      return res.status(200).json({ status: "FAIL", error: e.message, baseUrl: baseUrl, model: model });
-    }
-  }
-
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+
+  var apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
+
+  // Modele configurable. Defaut: gemini-3.5-flash
+  // Pour switcher: mets GEMINI_MODEL dans Vercel (ex: gemini-3.1-pro-preview)
+  var model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
   var system = req.body.system || "";
   var message = req.body.message || "";
   var search = req.body.search || false;
 
   var body = {
-    model: model,
-    max_tokens: 16000,
-    system: system + "\n\nReponds UNIQUEMENT avec un objet JSON valide. Pas de markdown, pas de backticks, pas de texte avant ou apres.",
-    messages: [{ role: "user", content: message }],
+    system_instruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts: [{ text: message }] }],
+    generationConfig: {
+      maxOutputTokens: 65536,
+      responseMimeType: 'application/json',
+    },
   };
-  if (search) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
+
+  if (search) {
+    body.tools = [{ google_search: {} }];
+    // google_search et responseMimeType json ne sont pas compatibles -> on retire le json forcé
+    delete body.generationConfig.responseMimeType;
+  }
 
   try {
-    var response = await fetch(baseUrl + "/v1/messages", {
+    var url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
+    var response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    var rawP = await response.text();
-    if (!response.ok) return res.status(response.status).json({ error: 'API ' + response.status, debug: rawP.slice(0, 1500) });
-    var dataP;
-    try { dataP = JSON.parse(rawP); } catch (e) { return res.status(500).json({ error: 'Bad JSON from API', debug: rawP.slice(0, 1500) }); }
-    if (dataP.error) return res.status(500).json({ error: dataP.error.message });
 
+    var raw = await response.text();
+    var data;
+    try { data = JSON.parse(raw); } catch (e) {
+      return res.status(500).json({ error: 'Reponse invalide de Gemini', debug: raw.slice(0, 800) });
+    }
+
+    if (data.error) {
+      return res.status(response.status || 500).json({ error: data.error.message || 'Gemini error' });
+    }
+
+    var parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
     var text = "";
-    (dataP.content || []).forEach(function(c){ if (c.type === "text" && c.text) text += c.text; });
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].text) text = text + parts[i].text;
+    }
+
     if (!text) {
-      var types = (dataP.content || []).map(function(c){ return c.type; });
-      return res.status(500).json({ error: "Reponse vide (stop: " + dataP.stop_reason + ", blocs: " + types.join(",") + ")" });
+      var fr = data.candidates && data.candidates[0] ? data.candidates[0].finishReason : "?";
+      return res.status(500).json({ error: "Reponse vide (finishReason: " + fr + ")" });
     }
-    if (dataP.stop_reason === "max_tokens") {
-      return res.status(500).json({ error: "Morceau trop long (sortie coupee). Reessaie ou raccourcis." });
-    }
+
+    // Nettoyage au cas ou (backticks markdown quand search est actif)
     var cleaned = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-    var jm = cleaned.match(/\{[\s\S]*\}/);
-    if (!jm) {
-      return res.status(500).json({ error: "Pas de JSON. Le modele a repondu: " + cleaned.slice(0, 300) });
-    }
-    cleaned = jm[0];
+
     res.status(200).json({ text: cleaned });
   } catch (e) {
     res.status(500).json({ error: e.message });
