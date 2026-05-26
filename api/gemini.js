@@ -10,8 +10,10 @@ export default async function handler(req, res) {
     try {
       var testBody = {
         model: model,
-        max_tokens: 200,
+        max_tokens: 16384,
+        thinking: { type: "enabled", budget_tokens: 10000 },
         messages: [{ role: "user", content: 'Réponds juste: {"test":"ok"}' }],
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
       };
 
       var testRes = await fetch(baseUrl + "/v1/messages", {
