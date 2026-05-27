@@ -6,9 +6,10 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     if (!apiKey) return res.status(200).json({ status: "FAIL", reason: "GEMINI_API_KEY pas configuree" });
     try {
+      var testThinkCfg = model.indexOf("2.5") >= 0 ? { thinkingBudget: 0 } : { thinkingLevel: 'minimal' };
       var testBody = {
         contents: [{ role: 'user', parts: [{ text: 'Reponds: {"ok":true}' }] }],
-        generationConfig: { maxOutputTokens: 100, responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: 'minimal' } },
+        generationConfig: { maxOutputTokens: 100, responseMimeType: 'application/json', thinkingConfig: testThinkCfg },
       };
       var url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
       var testRes = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(testBody) });
@@ -33,13 +34,18 @@ export default async function handler(req, res) {
   var message = req.body.message || "";
   var search = req.body.search || false;
 
+  // Le param de thinking diffère entre 2.5 et 3.x
+  var thinkingCfg = model.indexOf("2.5") >= 0
+    ? { thinkingBudget: 0 }
+    : { thinkingLevel: 'minimal' };
+
   var body = {
     system_instruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: message }] }],
     generationConfig: {
       maxOutputTokens: 65536,
       responseMimeType: 'application/json',
-      thinkingConfig: { thinkingLevel: 'minimal' },
+      thinkingConfig: thinkingCfg,
     },
   };
 
