@@ -19,6 +19,8 @@ export default async function handler(req, res) {
     // Step 4: Fallback - try lyrics.ovh
     if (!lyrics) lyrics = await fetchFromLyricsOvh(songArtist, songTitle);
     if (!lyrics) lyrics = await fetchFromLyricsOvh(artist, title);
+    // Step 5: Last resort - scrape lyrics from the Genius HTML page (works for underground artists)
+    if (!lyrics && geniusUrl) lyrics = await fetchFromGeniusHtml(geniusUrl);
     if (!lyrics || lyrics.length < 20) {
       return res.status(200).json({ found: false, lyrics: "", source: geniusUrl });
     }
@@ -59,6 +61,35 @@ async function fetchFromLyricsOvh(artist, title) {
     }
   } catch (e) {}
   return "";
+}
+async function fetchFromGeniusHtml(geniusUrl) {
+  try {
+    var r = await fetch(geniusUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
+    });
+    if (!r.ok) return "";
+    var html = await r.text();
+    // Genius wraps lyrics in <div data-lyrics-container="true">...</div>
+    var blocks = html.match(/<div[^>]*data-lyrics-container="true"[^>]*>[\s\S]*?<\/div>(?=\s*(?:<div|<\/div))/g);
+    if (!blocks || !blocks.length) return "";
+    var combined = blocks.map(function(b) {
+      return b
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&#x27;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&nbsp;/g, " ")
+        .trim();
+    }).filter(Boolean).join("\n\n");
+    // Clean up excessive newlines
+    combined = combined.replace(/\n{3,}/g, "\n\n").trim();
+    return combined.length > 30 ? combined : "";
+  } catch (e) { return ""; }
 }
 async function searchGenius(query, artist, token) {
   var r = await fetch("https://api.genius.com/search?q=" + encodeURIComponent(query), { headers: { "Authorization": "Bearer " + token } });
