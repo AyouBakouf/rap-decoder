@@ -1,4 +1,25 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+
+// ============ CACHE / SAUVEGARDE LOCALE ============
+var CV = "rdc1"; // version du cache
+function norm(s) { return (s || "").trim().toLowerCase(); }
+function ckey(artist, name) { return CV + ":song:" + norm(artist) + ":" + norm(name); }
+function tlkey(artist, album) { return CV + ":tl:" + norm(artist) + ":" + norm(album); }
+function cacheGet(artist, name) {
+  try { var r = localStorage.getItem(ckey(artist, name)); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+}
+function cacheSet(artist, name, payload) {
+  try { localStorage.setItem(ckey(artist, name), JSON.stringify(payload)); } catch (e) {}
+}
+function tlGet(artist, album) {
+  try { var r = localStorage.getItem(tlkey(artist, album)); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+}
+function tlSet(artist, album, tracks) {
+  try { localStorage.setItem(tlkey(artist, album), JSON.stringify(tracks)); } catch (e) {}
+}
+function sessionSave(s) { try { localStorage.setItem(CV + ":session", JSON.stringify(s)); } catch (e) {} }
+function sessionLoad() { try { var r = localStorage.getItem(CV + ":session"); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
+function sessionClear() { try { localStorage.removeItem(CV + ":session"); } catch (e) {} }
 
 var TRACKLIST_SYSTEM = "Tu donnes les tracklists d'albums. Reponds en JSON: {\"tracks\":[\"titre1\",\"titre2\",...]} Titres exacts, sans featurings. Si inconnu: {\"tracks\":[]}";
 
@@ -51,20 +72,62 @@ export default function App() {
   var dRef = useRef({});
   var isMobile = window.innerWidth <= 700;
 
+  // Reconstruit les morceaux deja decodes depuis le cache local
+  var hydrate = function(art, trks) {
+    var restored = {};
+    var cnt = 0;
+    trks.forEach(function(t) {
+      var c = cacheGet(art, t);
+      if (c && c.d) { restored[t] = { st: "ok", d: c.d }; cnt++; }
+    });
+    dRef.current = restored;
+    setData(restored);
+    setDone(cnt);
+  };
+
+  // Au chargement: restaure la derniere session
+  useEffect(function() {
+    var s = sessionLoad();
+    if (s && s.tracks && s.tracks.length) {
+      setMode(s.mode || "album");
+      setArtist(s.artist || "");
+      setAlbum(s.album || "");
+      setSingle(s.single || "");
+      setTracks(s.tracks);
+      hydrate(s.artist, s.tracks);
+      setView("list");
+    }
+  }, []);
+
+  // Sauvegarde la session courante
+  useEffect(function() {
+    if (view === "list" && tracks.length) {
+      sessionSave({ mode: mode, artist: artist, album: album, single: single, tracks: tracks });
+    }
+  }, [view, tracks, artist, album, single, mode]);
+
   var go = async function() {
     if (mode === "album") {
       if (!album.trim() || !artist.trim()) return;
+      // Tracklist deja en cache -> pas de re-call API
+      var tlCached = tlGet(artist, album);
+      if (tlCached && tlCached.length) {
+        setTracks(tlCached); hydrate(artist, tlCached); setSel(null); setView("list");
+        return;
+      }
       setView("loading"); setErr("");
       try {
         var r = await callGemini(TRACKLIST_SYSTEM, album + " - " + artist, true);
         if (r.tracks && r.tracks.length) {
-          setTracks(r.tracks); setDone(0); setView("list");
+          tlSet(artist, album, r.tracks);
+          setTracks(r.tracks); hydrate(artist, r.tracks); setSel(null); setView("list");
         } else { setErr("Album introuvable"); setView("error"); }
       } catch (e) { setErr(e.message); setView("error"); }
     } else {
       // Single mode: skip tracklist, go straight to decode
       if (!single.trim() || !artist.trim()) return;
-      setTracks([single]); setDone(0); setView("list");
+      dRef.current = {}; setData({});
+      setTracks([single]); setDone(0); setSel(null); setView("list");
       // Auto-decode the single immediately
       setTimeout(function() { decode(single, false); }, 100);
     }
@@ -81,6 +144,14 @@ export default function App() {
       dRef.current = next;
       setData(Object.assign({}, dRef.current));
     };
+    // Cache local: si deja decode (meme dans une autre session) -> instantane, pas d'appel API
+    var cached = cacheGet(artist, name);
+    if (cached && cached.d) {
+      up({ st: "ok", d: cached.d });
+      setDone(function(p) { return p + 1; });
+      if (!autoMode) setSel(name);
+      return;
+    }
     up({ st: "load" });
     if (!autoMode) setSel(name);
     try {
@@ -93,12 +164,14 @@ export default function App() {
         r.found = true;
         r._source = genius.source;
         up({ st: "ok", d: r }); setDone(function(p) { return p + 1; });
+        if (r.lines && r.lines.length) cacheSet(artist, name, { d: r });
       } else {
         var FALLBACK_SYSTEM = "Tu es un traducteur rap. Utilise web_search pour trouver les paroles de ce morceau. Puis traduis ligne par ligne.\n\nAjoute \"c\" (0-100) pour la confiance de chaque traduction. <70 = incertain.\n\nReponds en JSON: {\"found\":true,\"lang\":\"anglais\",\"lines\":[{\"s\":\"[Verse 1]\"},{\"o\":\"ligne\",\"t\":\"traduction\",\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"ref\"}]}\n\nRegroupe les lignes courtes. \"bitch\"=meuf. \"nigga\"=laisse tel quel. Si introuvable: {\"found\":false,\"lines\":[],\"notes\":[]}";
         var ctx = mode === "single" ? "" : ", album \"" + album + "\"";
         var r2 = await callGemini(FALLBACK_SYSTEM, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ctx + ".", true);
         r2._source = genius.source || null;
         up({ st: "ok", d: r2 }); setDone(function(p) { return p + 1; });
+        if (r2.lines && r2.lines.length) cacheSet(artist, name, { d: r2 });
       }
     } catch (e) { up({ st: "err", msg: e.message }); }
   }, [artist, album, mode]);
@@ -122,6 +195,7 @@ export default function App() {
   var reset = function() {
     stopRef.current = true; setView("input"); setTracks([]); setData({});
     dRef.current = {}; setSel(null); setAuto(false); setDone(0);
+    sessionClear();
   };
 
   var analyzeLine = async function(lineIdx, line) {
@@ -136,7 +210,7 @@ export default function App() {
       }
       var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
       var prompt = "Morceau: \"" + sel + "\" par " + artist + albumCtx + ".\n\nContexte:\n" + contextLines.join("\n") + "\n\nLIGNE A ANALYSER: " + line.o + "\n\nTraduction actuelle: " + (line.t || line.o);
-      var r = await callGemini(DEEP_ANALYSIS_SYSTEM, prompt, true);
+      var r = await callGemini(DEEP_ANALYSIS_SYSTEM, prompt, false);
       setFocusData(r);
     } catch (e) {
       setFocusData({ error: e.message });
