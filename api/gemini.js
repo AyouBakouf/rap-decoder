@@ -60,7 +60,20 @@ export default async function handler(req, res) {
     var raw = await response.text();
     var data;
     try { data = JSON.parse(raw); } catch (e) { return res.status(500).json({ error: 'Reponse invalide', debug: raw.slice(0, 800) }); }
-    if (data.error) return res.status(response.status || 500).json({ error: data.error.message || 'Gemini error' });
+    if (data.error) {
+      if (response.status === 429) {
+        var retryAfter = 20;
+        var details = data.error.details || [];
+        for (var k = 0; k < details.length; k++) {
+          if (details[k].retryDelay) {
+            var sec = parseInt(details[k].retryDelay, 10);
+            if (!isNaN(sec)) retryAfter = sec;
+          }
+        }
+        return res.status(429).json({ rateLimited: true, retryAfter: retryAfter, error: data.error.message || 'Rate limit' });
+      }
+      return res.status(response.status || 500).json({ error: data.error.message || 'Gemini error' });
+    }
 
     var parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
     var text = "";
