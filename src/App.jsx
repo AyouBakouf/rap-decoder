@@ -27,14 +27,21 @@ var TRANSLATE_SYSTEM = "Tu es un traducteur rap. On te donne les PAROLES EXACTES
 
 var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap expert. On te donne UNE ligne d'un morceau, le contexte du morceau, et les lignes qui entourent.\n\nAnalyse cette ligne en profondeur:\n- Sens litteral\n- Sens figure / ce que l'artiste veut vraiment dire\n- Refs (personnes, marques, lieux, evenements, samples)\n- Wordplay, double sens, homophones\n- Technique (flow, rime, schema)\n\nReponds en JSON:\n{\n\"literal\":\"sens litteral\",\n\"meaning\":\"ce que l'artiste dit vraiment\",\n\"refs\":[{\"r\":\"ref\",\"e\":\"explication\"}],\n\"wordplay\":\"wordplay si present, sinon null\",\n\"technique\":\"note sur la technique si notable, sinon null\"\n}";
 
-async function callGemini(system, message, search) {
+async function callGemini(system, message, search, _retries) {
   if (search === undefined) search = false;
+  if (_retries === undefined) _retries = 0;
   var res = await fetch("/api/gemini", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ system: system, message: message, search: search }),
   });
   var data = await res.json();
+  // Rate limit: on attend le delai indique par Google et on reessaie tout seul
+  if (data.rateLimited && _retries < 5) {
+    var wait = Math.min((data.retryAfter || 20) + 2, 45);
+    await new Promise(function(r) { setTimeout(r, wait * 1000); });
+    return callGemini(system, message, search, _retries + 1);
+  }
   if (data.error) throw new Error(data.error);
   var text = data.text || "";
   var m = text.match(/\{[\s\S]*\}/);
