@@ -27,20 +27,22 @@ var TRANSLATE_SYSTEM = "Tu es un traducteur rap. On te donne les PAROLES EXACTES
 
 var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap. On te donne UNE ligne d'un morceau, le contexte, et les lignes autour.\n\nSois BREF et va droit au but. Pas de paraphrase de la traduction. Pas de blabla.\n\nReponds en JSON:\n{\n\"meaning\":\"ce que l'artiste dit vraiment, 1-2 phrases max\",\n\"refs\":[{\"r\":\"ref\",\"e\":\"explication courte\"}] ou [] si aucune ref notable,\n\"wordplay\":\"explication courte SEULEMENT si wordplay/double sens marquant, sinon null\"\n}\n\nRegles:\n- Pas de \\\"sens litteral\\\" (la traduction le donne deja).\n- Refs = personnes, marques, lieux, evenements, samples. Si la ligne est straight talk sans ref, refs=[].\n- Wordplay = uniquement si vraiment notable. La majorite des lignes auront wordplay=null.\n- Tout en francais, ton direct et concis.";
 
-async function callGemini(system, message, search, _retries) {
+async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
   if (_retries === undefined) _retries = 0;
+  var payload = { system: system, message: message, search: search };
+  if (model) payload.model = model;
   var res = await fetch("/api/gemini", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ system: system, message: message, search: search }),
+    body: JSON.stringify(payload),
   });
   var data = await res.json();
   // Rate limit: on attend le delai indique par Google et on reessaie tout seul
   if (data.rateLimited && _retries < 5) {
     var wait = Math.min((data.retryAfter || 20) + 2, 45);
     await new Promise(function(r) { setTimeout(r, wait * 1000); });
-    return callGemini(system, message, search, _retries + 1);
+    return callGemini(system, message, search, model, _retries + 1);
   }
   if (data.error) throw new Error(data.error);
   var text = data.text || "";
@@ -217,7 +219,7 @@ export default function App() {
       }
       var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
       var prompt = "Morceau: \"" + sel + "\" par " + artist + albumCtx + ".\n\nContexte:\n" + contextLines.join("\n") + "\n\nLIGNE A ANALYSER: " + line.o + "\n\nTraduction actuelle: " + (line.t || line.o);
-      var r = await callGemini(DEEP_ANALYSIS_SYSTEM, prompt, false);
+      var r = await callGemini(DEEP_ANALYSIS_SYSTEM, prompt, false, "gemini-3.1-flash-lite");
       setFocusData(r);
     } catch (e) {
       setFocusData({ error: e.message });
