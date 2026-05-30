@@ -1,10 +1,11 @@
 export default async function handler(req, res) {
   var apiKey = process.env.GEMINI_API_KEY;
-  var model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+  var defaultModel = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
   // GET = debug: voir quelle cle tourne et tester un appel
   if (req.method === 'GET') {
     if (!apiKey) return res.status(200).json({ status: "FAIL", reason: "GEMINI_API_KEY pas configuree" });
+    var model = defaultModel;
     try {
       var testThinkCfg = model.indexOf("2.5") >= 0 ? { thinkingBudget: 0 } : { thinkingLevel: 'minimal' };
       var testBody = {
@@ -33,6 +34,8 @@ export default async function handler(req, res) {
   var system = req.body.system || "";
   var message = req.body.message || "";
   var search = req.body.search || false;
+  // Permet a chaque appel de choisir son modele (ex: lite pour les annotations)
+  var model = req.body.model || defaultModel;
 
   // Le param de thinking diffère entre 2.5 et 3.x
   var thinkingCfg = model.indexOf("2.5") >= 0
