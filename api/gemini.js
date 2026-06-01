@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   var apiKey = process.env.GEMINI_API_KEY;
-  var defaultModel = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  var defaultModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
   // GET = debug: voir quelle cle tourne et tester un appel
   if (req.method === 'GET') {
