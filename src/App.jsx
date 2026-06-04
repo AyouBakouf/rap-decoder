@@ -347,7 +347,7 @@ export default function App() {
                               {l.o}
                               {isUncertain && <span title={"Confiance: " + conf + "%"} style={S.uncertainBadge}>?</span>}
                             </div>
-                            {l.t && <div style={Object.assign({}, S.tr, isUncertain ? { color: "#8a7a4a" } : {})}>{l.t}</div>}
+                            {l.t ? <div style={Object.assign({}, S.tr, isUncertain ? { color: "#8a7a4a" } : {})}>{l.t}</div> : <div style={{ fontSize: 11, color: "#ff6b6b", marginTop: 4, fontStyle: "italic" }}>⚠ traduction manquante (champ t vide dans la reponse)</div>}
                           </div>
                         );
                       })}
