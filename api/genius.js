@@ -1,31 +1,55 @@
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   var token = process.env.GENIUS_API_TOKEN;
   if (!token) return res.status(500).json({ error: 'GENIUS_API_TOKEN not set' });
+
+  // GET = test direct: /api/genius?title=...&artist=...
+  if (req.method === 'GET') {
+    var qt = (req.query && req.query.title) || "";
+    var qa = (req.query && req.query.artist) || "";
+    if (!qt || !qa) return res.status(200).json({ usage: "GET /api/genius?title=Xxx&artist=Yyy" });
+    return runLookup(qt, qa, token, res);
+  }
+
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   var title = req.body.title || "";
   var artist = req.body.artist || "";
+  return runLookup(title, artist, token, res);
+}
+
+async function runLookup(title, artist, token, res) {
   var cleanTitle = title.replace(/[.,'!?#\(\)]/g, " ").replace(/\s+/g, " ").trim();
+  var dbg = { steps: [] };
   try {
-    // Step 1: Use Genius to find correct song name and artist
     var song = await searchGenius(cleanTitle + " " + artist, artist, token);
     if (!song) song = await searchGenius(cleanTitle, artist, token);
+    dbg.steps.push("genius_search: " + (song ? ("found url=" + song.url) : "NOT FOUND"));
     var songTitle = song ? song.title : title;
     var songArtist = (song && song.primary_artist && song.primary_artist.name) ? song.primary_artist.name : artist;
     var geniusUrl = song ? song.url : "";
-    // Step 2: Get lyrics from lrclib (direct API, no scraping)
     var lyrics = await fetchFromLrclib(songArtist, songTitle);
-    // Step 3: Fallback - try with original title/artist
-    if (!lyrics && song) lyrics = await fetchFromLrclib(artist, title);
-    // Step 4: Fallback - try lyrics.ovh
-    if (!lyrics) lyrics = await fetchFromLyricsOvh(songArtist, songTitle);
-    if (!lyrics) lyrics = await fetchFromLyricsOvh(artist, title);
-    // Step 5: Last resort - scrape lyrics from the Genius HTML page (works for underground artists)
-    if (!lyrics && geniusUrl) lyrics = await fetchFromGeniusHtml(geniusUrl);
-    if (!lyrics || lyrics.length < 20) {
-      return res.status(200).json({ found: false, lyrics: "", source: geniusUrl });
+    dbg.steps.push("lrclib(canonical): " + (lyrics ? lyrics.length + " chars" : "empty"));
+    if (!lyrics && song) {
+      lyrics = await fetchFromLrclib(artist, title);
+      dbg.steps.push("lrclib(original): " + (lyrics ? lyrics.length + " chars" : "empty"));
     }
-    return res.status(200).json({ found: true, lyrics: lyrics, source: geniusUrl, title: songTitle, artist: songArtist });
-  } catch (e) { return res.status(500).json({ error: e.message }); }
+    if (!lyrics) {
+      lyrics = await fetchFromLyricsOvh(songArtist, songTitle);
+      dbg.steps.push("lyricsovh(canonical): " + (lyrics ? lyrics.length + " chars" : "empty"));
+    }
+    if (!lyrics) {
+      lyrics = await fetchFromLyricsOvh(artist, title);
+      dbg.steps.push("lyricsovh(original): " + (lyrics ? lyrics.length + " chars" : "empty"));
+    }
+    if (!lyrics && geniusUrl) {
+      var sr = await fetchFromGeniusHtml(geniusUrl);
+      lyrics = sr.lyrics;
+      dbg.steps.push("genius_scrape: " + (lyrics ? lyrics.length + " chars" : "empty") + " | http=" + sr.status + " | blocks=" + sr.blocks + " | htmlLen=" + sr.htmlLen);
+    }
+    if (!lyrics || lyrics.length < 20) {
+      return res.status(200).json({ found: false, lyrics: "", source: geniusUrl, _debug: dbg });
+    }
+    return res.status(200).json({ found: true, lyrics: lyrics, source: geniusUrl, title: songTitle, artist: songArtist, _debug: dbg });
+  } catch (e) { return res.status(500).json({ error: e.message, _debug: dbg }); }
 }
 async function fetchFromLrclib(artist, title) {
   try {
@@ -63,15 +87,18 @@ async function fetchFromLyricsOvh(artist, title) {
   return "";
 }
 async function fetchFromGeniusHtml(geniusUrl) {
+  var out = { lyrics: "", status: 0, blocks: 0, htmlLen: 0 };
   try {
     var r = await fetch(geniusUrl, {
       headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
     });
-    if (!r.ok) return "";
+    out.status = r.status;
+    if (!r.ok) return out;
     var html = await r.text();
-    // Genius wraps lyrics in <div data-lyrics-container="true">...</div>
+    out.htmlLen = html.length;
     var blocks = html.match(/<div[^>]*data-lyrics-container="true"[^>]*>[\s\S]*?<\/div>(?=\s*(?:<div|<\/div))/g);
-    if (!blocks || !blocks.length) return "";
+    out.blocks = blocks ? blocks.length : 0;
+    if (!blocks || !blocks.length) return out;
     var combined = blocks.map(function(b) {
       return b
         .replace(/<br\s*\/?>/gi, "\n")
@@ -85,11 +112,10 @@ async function fetchFromGeniusHtml(geniusUrl) {
         .replace(/&quot;/g, '"')
         .replace(/&nbsp;/g, " ")
         .trim();
-    }).filter(Boolean).join("\n\n");
-    // Clean up excessive newlines
-    combined = combined.replace(/\n{3,}/g, "\n\n").trim();
-    return combined.length > 30 ? combined : "";
-  } catch (e) { return ""; }
+    }).filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+    if (combined.length > 30) out.lyrics = combined;
+    return out;
+  } catch (e) { return out; }
 }
 async function searchGenius(query, artist, token) {
   var r = await fetch("https://api.genius.com/search?q=" + encodeURIComponent(query), { headers: { "Authorization": "Bearer " + token } });
