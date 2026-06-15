@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 // ============ CACHE / SAUVEGARDE LOCALE ============
-var CV = "rdc1"; // version du cache
+var CV = "rdc2"; // version du cache (bumpe pour inclure le contexte)
 function norm(s) { return (s || "").trim().toLowerCase(); }
 function ckey(artist, name) { return CV + ":song:" + norm(artist) + ":" + norm(name); }
 function tlkey(artist, album) { return CV + ":tl:" + norm(artist) + ":" + norm(album); }
@@ -26,6 +26,8 @@ var TRACKLIST_SYSTEM = "Tu donnes les tracklists d'albums. Reponds en JSON: {\"t
 var TRANSLATE_SYSTEM = "Tu es un traducteur rap. On te donne les PAROLES EXACTES d'un morceau, tu retournes la traduction française ligne par ligne en JSON.\n\nREGLE NUMERO 1, ABSOLUE: pour CHAQUE ligne tu DOIS produire un objet {\"o\":\"ligne originale\",\"t\":\"TRADUCTION FRANCAISE\",\"c\":confiance}. Le champ \"t\" doit TOUJOURS contenir la traduction française complète. Ne laisse JAMAIS \"t\" vide, null, ou identique a \"o\". Si une ligne est intraduisible, mets \"t\":\"<intraduisible>\". C'est ta seule mission: TRADUIRE.\n\nAutres regles:\n- Regroupe les lignes trop courtes qui font partie de la meme phrase en UNE seule.\n- Sections: titres generiques [Intro], [Verse 1], [Chorus], [Bridge], [Outro], [Interlude]. JAMAIS le nom d'un rappeur.\n- Inclus TOUTES les lignes (interludes, skits, outros). Coupe RIEN.\n- \"c\" = confiance 0-100. 100 = trad evidente. <70 = slang rare, ref obscure, sens incertain.\n- Si tout le morceau est en francais: \"t\":null pour chaque ligne, lang=\"francais\".\n- Contexte rap: \"bitch\"=\"meuf\" (jamais pute). \"nigga\"=ne traduis pas. \"whip\"=\"caisse\". Registre rap francais, pas francais scolaire.\n\nNotes de decryptage (champ \"notes\"):\n- \"r\"=mot/expression, \"e\"=explication courte, \"t\"=type (\"slang\"/\"ref\"/\"wordplay\"/\"sample\")\n\nFormat JSON:\n{\n\"lang\":\"anglais\",\n\"lines\":[\n{\"s\":\"[Intro]\"},\n{\"o\":\"ligne originale\",\"t\":\"traduction francaise\",\"c\":95}\n],\n\"notes\":[\n{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"ref\"}\n]\n}";
 
 var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap. On te donne UNE ligne d'un morceau, le contexte, et les lignes autour.\n\nSois BREF et va droit au but. Pas de paraphrase de la traduction. Pas de blabla.\n\nReponds en JSON:\n{\n\"meaning\":\"ce que l'artiste dit vraiment, 1-2 phrases max\",\n\"refs\":[{\"r\":\"ref\",\"e\":\"explication courte\"}] ou [] si aucune ref notable,\n\"wordplay\":\"explication courte SEULEMENT si wordplay/double sens marquant, sinon null\"\n}\n\nRegles:\n- Pas de \\\"sens litteral\\\" (la traduction le donne deja).\n- Refs = personnes, marques, lieux, evenements, samples. Si la ligne est straight talk sans ref, refs=[].\n- Wordplay = uniquement si vraiment notable. La majorite des lignes auront wordplay=null.\n- Tout en francais, ton direct et concis.";
+
+var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre). Donne son contexte, en parlant SIMPLE comme a un pote.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom\",\"year\":2020,\"producer\":\"prod\",\"themes\":[\"theme1\",\"theme2\"],\"summary\":\"2-3 phrases simples\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- summary: 2-3 phrases en francais COURANT pour dire de quoi parle vraiment le son. Comme a un pote. Pas de critique musicale pretentieuse.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info.";
 
 async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
@@ -142,9 +144,40 @@ export default function App() {
     }
   };
 
+  // Recupere le contexte (album/annee/themes/resume) en arriere-plan et le fusionne
+  var fetchContext = function(name) {
+    var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
+    callGemini(CONTEXT_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtx, true)
+      .then(function(ctx) {
+        var entry = dRef.current[name];
+        if (!entry || entry.st !== "ok" || !entry.d) return;
+        var merged = Object.assign({}, entry.d, { context: ctx });
+        var next = Object.assign({}, dRef.current);
+        next[name] = { st: "ok", d: merged };
+        dRef.current = next;
+        setData(Object.assign({}, dRef.current));
+        cacheSet(artist, name, { d: merged });
+      })
+      .catch(function() {});
+  };
+
+  // Lance le decodage des morceaux suivants en arriere-plan (pendant que tu ecoutes)
+  var prefetchNext = function(name) {
+    if (mode !== "album") return;
+    var idx = tracks.indexOf(name);
+    if (idx < 0) return;
+    var upcoming = tracks.slice(idx + 1, idx + 1 + 3);
+    upcoming.forEach(function(t) {
+      var e = dRef.current[t];
+      if (!e || (e.st !== "ok" && e.st !== "load")) {
+        decode(t, true);
+      }
+    });
+  };
+
   var decode = useCallback(async function(name, autoMode) {
     if (dRef.current[name] && dRef.current[name].st === "ok") {
-      if (!autoMode) setSel(name);
+      if (!autoMode) { setSel(name); prefetchNext(name); }
       return;
     }
     var up = function(v) {
@@ -158,7 +191,9 @@ export default function App() {
     if (cached && cached.d) {
       up({ st: "ok", d: cached.d });
       setDone(function(p) { return p + 1; });
-      if (!autoMode) setSel(name);
+      if (!autoMode) { setSel(name); prefetchNext(name); }
+      // si le contexte manque (vieux cache), on le recupere
+      if (!cached.d.context) fetchContext(name);
       return;
     }
     up({ st: "load" });
@@ -174,6 +209,7 @@ export default function App() {
         r._source = genius.source;
         up({ st: "ok", d: r }); setDone(function(p) { return p + 1; });
         if (r.lines && r.lines.length) cacheSet(artist, name, { d: r });
+        fetchContext(name);
       } else {
         var FALLBACK_SYSTEM = "Tu es un traducteur rap. Utilise web_search pour trouver les paroles de ce morceau. Puis traduis ligne par ligne.\n\nAjoute \"c\" (0-100) pour la confiance de chaque traduction. <70 = incertain.\n\nReponds en JSON: {\"found\":true,\"lang\":\"anglais\",\"lines\":[{\"s\":\"[Verse 1]\"},{\"o\":\"ligne\",\"t\":\"traduction\",\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"ref\"}]}\n\nRegroupe les lignes courtes. \"bitch\"=meuf. \"nigga\"=laisse tel quel. Si introuvable: {\"found\":false,\"lines\":[],\"notes\":[]}";
         var ctx = mode === "single" ? "" : ", album \"" + album + "\"";
@@ -181,9 +217,11 @@ export default function App() {
         r2._source = genius.source || null;
         up({ st: "ok", d: r2 }); setDone(function(p) { return p + 1; });
         if (r2.lines && r2.lines.length) cacheSet(artist, name, { d: r2 });
+        if (r2.found) fetchContext(name);
       }
+      if (!autoMode) prefetchNext(name);
     } catch (e) { up({ st: "err", msg: e.message }); }
-  }, [artist, album, mode]);
+  }, [artist, album, mode, tracks]);
 
   var decodeAll = useCallback(async function() {
     stopRef.current = false; setAuto(true);
@@ -334,6 +372,30 @@ export default function App() {
                       <span style={{ fontSize: 9, color: "#333", marginLeft: "auto" }}>Clique une ligne pour analyser</span>
                     </div>
                   </div>
+
+                  {curD.context && (curD.context.summary || curD.context.album) && (
+                    <Fold title="CONTEXTE & ANALYSE" color="#f0c040">
+                      {(curD.context.album || curD.context.year || curD.context.producer) && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginBottom: 10, fontSize: 11 }}>
+                          {curD.context.album && <span style={{ color: "#555" }}><span style={{ color: "#333", textTransform: "uppercase", fontSize: 9 }}>album:</span> <span style={{ color: "#999" }}>{curD.context.album}</span></span>}
+                          {curD.context.year && <span style={{ color: "#555" }}><span style={{ color: "#333", textTransform: "uppercase", fontSize: 9 }}>annee:</span> <span style={{ color: "#999" }}>{curD.context.year}</span></span>}
+                          {curD.context.producer && <span style={{ color: "#555" }}><span style={{ color: "#333", textTransform: "uppercase", fontSize: 9 }}>prod:</span> <span style={{ color: "#999" }}>{curD.context.producer}</span></span>}
+                        </div>
+                      )}
+                      {curD.context.themes && curD.context.themes.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                          {curD.context.themes.map(function(th, ti) {
+                            return <span key={ti} style={{ fontSize: 9, padding: "2px 8px", border: "1px solid #2a2a2a", borderRadius: 20, color: "#888", letterSpacing: 1 }}>{th}</span>;
+                          })}
+                        </div>
+                      )}
+                      {curD.context.summary && <div style={{ fontSize: 12, lineHeight: 1.6, color: "#bbb" }}>{curD.context.summary}</div>}
+                    </Fold>
+                  )}
+
+                  {curD.found && !curD.context && (
+                    <div style={{ fontSize: 10, color: "#444", marginBottom: 14, fontStyle: "italic", letterSpacing: 1 }}>analyse du contexte en cours...</div>
+                  )}
 
                   {curD.lines && curD.lines.length > 0 && (
                     <Fold title="PAROLES + TRADUCTION" color="#4ade80">
