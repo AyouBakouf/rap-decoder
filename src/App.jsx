@@ -29,7 +29,7 @@ var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap. On te donne UNE ligne d'un mo
 
 var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre). Donne son contexte, en parlant SIMPLE comme a un pote.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom\",\"year\":2020,\"producer\":\"prod\",\"themes\":[\"theme1\",\"theme2\"],\"summary\":\"2-3 phrases simples\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- summary: 2-3 phrases en francais COURANT pour dire de quoi parle vraiment le son. Comme a un pote. Pas de critique musicale pretentieuse.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info.";
 
-var PUNCHLINES_SYSTEM = "Tu es un connaisseur de rap avec un gout sur pour les punchlines. On te donne les paroles d'un morceau (avec traductions). Extrais les MEILLEURES punchlines.\n\nJSON UNIQUEMENT:\n{\"punchlines\":[{\"o\":\"ligne originale exacte\",\"t\":\"traduction\",\"why\":\"pourquoi ca frappe, 1 phrase simple\",\"type\":\"wordplay\"}]}\n\nRegles:\n- Entre 3 et 6 punchlines MAX. Qualite > quantite. Si le son a que 2 vraies punchlines, donne 2.\n- Copie \"o\" EXACTEMENT depuis les paroles fournies (mot pour mot).\n- \"why\": explique en langage simple pourquoi la ligne est forte. Comme a un pote. Pas de jargon.\n- \"type\": \"wordplay\" (double sens, jeu de mots) / \"flex\" (demonstration de force) / \"image\" (imagery forte) / \"real\" (verite brute, ligne touchante) / \"technique\" (flow/rime exceptionnelle)\n- Une vraie punchline = une ligne qui te fait faire 'ooh' ou reculer ta chaise. Pas juste une ligne correcte.";
+var PUNCHLINES_SYSTEM = "Tu es un connaisseur de rap lyrical/conscient. On te donne les paroles d'un morceau (avec traductions). Extrais les lignes les plus FORTES — celles qui restent en tete apres l'ecoute.\n\nJSON UNIQUEMENT:\n{\"punchlines\":[{\"o\":\"ligne originale exacte\",\"t\":\"traduction\",\"why\":\"pourquoi ca touche, 1-2 phrases simples\",\"type\":\"real\"}]}\n\nCE QU'ON CHERCHE (par ordre de priorite):\n1. \"real\" — verites brutes, vulnerabilite, lignes qui touchent au vecu (deuil, famille, addiction, survie). LE PLUS IMPORTANT.\n2. \"image\" — imagery qui hante, metaphores qui restent\n3. \"depth\" — double lecture qui change le sens du morceau, ligne qui prend un autre sens quand tu connais le contexte de l'artiste\n4. \"wordplay\" — seulement si le jeu de mots SERT un propos (pas juste pour briller)\n5. \"flex\" — seulement si vraiment iconique\n\nRegles:\n- Entre 3 et 6 lignes MAX. Qualite > quantite.\n- Copie \"o\" EXACTEMENT depuis les paroles fournies.\n- \"why\": explique ce que la ligne dit vraiment et pourquoi elle touche. Langage simple, comme a un pote. Si la ligne renvoie au vecu de l'artiste, dis-le.\n- Le critere: une ligne qui te fait mettre pause, pas une ligne qui te fait dire 'pas mal'.";
 
 async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
@@ -82,6 +82,8 @@ export default function App() {
   var _k = useState(null), focusData = _k[0], setFocusData = _k[1];
   var _l = useState(false), focusLoading = _l[0], setFocusLoading = _l[1];
   var _p = useState(false), plLoading = _p[0], setPlLoading = _p[1];
+  var _ap = useState(false), albumPlView = _ap[0], setAlbumPlView = _ap[1];
+  var _apl = useState(false), albumPlLoading = _apl[0], setAlbumPlLoading = _apl[1];
   var stopRef = useRef(false);
   var dRef = useRef({});
   var isMobile = window.innerWidth <= 700;
@@ -270,33 +272,54 @@ export default function App() {
 
   var closeFocus = function() { setFocusLine(null); setFocusData(null); };
 
-  // Extrait les meilleures punchlines du son courant (depuis les paroles deja decodees)
-  var extractPunchlines = async function() {
-    var entry = dRef.current[sel];
+  // Extraction punchlines pour UN son donne (reutilisable)
+  var extractPunchlinesFor = async function(name) {
+    var entry = dRef.current[name];
     if (!entry || entry.st !== "ok" || !entry.d || !entry.d.lines) return;
     if (entry.d.punchlines) return; // deja fait
-    setPlLoading(true);
     try {
       var lyricsText = entry.d.lines.map(function(l) {
         if (l.s) return "\n" + l.s;
         return l.o + (l.t ? "\n(" + l.t + ")" : "");
       }).join("\n");
       var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
-      var r = await callGemini(PUNCHLINES_SYSTEM, "Morceau: \"" + sel + "\" par " + artist + albumCtx + "\n\nPAROLES (avec traductions entre parentheses):\n" + lyricsText, false);
+      var r = await callGemini(PUNCHLINES_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtx + "\n\nPAROLES (avec traductions entre parentheses):\n" + lyricsText, false);
       var merged = Object.assign({}, entry.d, { punchlines: (r.punchlines || []) });
       var next = Object.assign({}, dRef.current);
-      next[sel] = { st: "ok", d: merged };
+      next[name] = { st: "ok", d: merged };
       dRef.current = next;
       setData(Object.assign({}, dRef.current));
-      cacheSet(artist, sel, { d: merged });
+      cacheSet(artist, name, { d: merged });
     } catch (e) {}
+  };
+
+  // Extrait les meilleures punchlines du son courant
+  var extractPunchlines = async function() {
+    setPlLoading(true);
+    await extractPunchlinesFor(sel);
     setPlLoading(false);
+  };
+
+  // Best of album: extrait les punchlines de tous les sons decodes (2 en parallele)
+  var extractAlbumPunchlines = async function() {
+    setAlbumPlView(true);
+    setAlbumPlLoading(true);
+    var decoded = tracks.filter(function(t) {
+      var e = dRef.current[t];
+      return e && e.st === "ok" && e.d && e.d.lines && e.d.lines.length;
+    });
+    var pending = decoded.filter(function(t) { return !dRef.current[t].d.punchlines; });
+    for (var i = 0; i < pending.length; i += 2) {
+      var batch = pending.slice(i, i + 2).map(function(t) { return extractPunchlinesFor(t); });
+      await Promise.all(batch);
+    }
+    setAlbumPlLoading(false);
   };
 
   var cur = sel && data[sel];
   var curD = cur ? cur.d : null;
-  var showSidebar = !isMobile || !sel;
-  var showDetail = !isMobile || sel;
+  var showSidebar = !isMobile || (!sel && !albumPlView);
+  var showDetail = !isMobile || sel || albumPlView;
   var headerLabel = mode === "single" ? single : album;
 
   return (
@@ -350,12 +373,23 @@ export default function App() {
                   </button>
                 )}
               </div>
+              {mode === "album" && done > 0 && (
+                <button onClick={extractAlbumPunchlines} style={{
+                  background: "transparent", border: "1px solid #2a2040", borderRadius: 4,
+                  color: "#a855f7", fontFamily: "inherit", fontSize: 9,
+                  padding: "5px 10px", cursor: "pointer",
+                  letterSpacing: 2, textTransform: "uppercase",
+                  margin: "0 12px 10px", display: "block",
+                }}>
+                  ★ best of album
+                </button>
+              )}
               {tracks.map(function(t, i) {
                 var st = (data[t] && data[t].st) || "idle";
                 var isSel = sel === t;
                 var colors = { idle: "#222", load: "#f0c040", ok: "#4ade80", err: "#ef4444" };
                 return (
-                  <div key={i} onClick={function() { decode(t, false); }} style={Object.assign({}, S.trackRow, {
+                  <div key={i} onClick={function() { setAlbumPlView(false); decode(t, false); }} style={Object.assign({}, S.trackRow, {
                     background: isSel ? "#131313" : "transparent",
                     borderLeft: isSel ? "2px solid #f0c040" : "2px solid transparent",
                   })}>
@@ -372,7 +406,44 @@ export default function App() {
             </div>
           )}
 
-          {showDetail && sel && (
+          {showDetail && albumPlView && (
+            <div style={S.detail}>
+              <button onClick={function() { setAlbumPlView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <div style={S.trackTitle}>★ Best of {album}</div>
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>{artist} — les lignes qui restent</div>
+              {albumPlLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><div style={Object.assign({}, S.spinner, { width: 12, height: 12, margin: 0 })} /><span style={{ fontSize: 10, color: "#555", fontStyle: "italic" }}>extraction en cours...</span></div>}
+              {tracks.map(function(t, ti) {
+                var e = data[t];
+                if (!e || e.st !== "ok" || !e.d || !e.d.punchlines || !e.d.punchlines.length) return null;
+                var typeColors = { wordplay: "#a855f7", flex: "#f0c040", image: "#4ade80", real: "#e05030", depth: "#38bdf8", technique: "#38bdf8" };
+                return (
+                  <div key={ti} style={{ marginBottom: 26 }}>
+                    <div onClick={function() { setAlbumPlView(false); decode(t, false); }} style={{ fontSize: 11, color: "#f0c040", letterSpacing: 2, textTransform: "uppercase", marginBottom: 10, cursor: "pointer" }}>
+                      <span style={{ color: "#333", marginRight: 6 }}>{String(ti + 1).padStart(2, "0")}</span>{t}
+                    </div>
+                    {e.d.punchlines.map(function(p, pi) {
+                      var tc = typeColors[p.type] || "#666";
+                      return (
+                        <div key={pi} style={{ marginBottom: 14, paddingLeft: 10, borderLeft: "2px solid " + tc }}>
+                          <div style={{ fontSize: 13, color: "#ddd", lineHeight: 1.5 }}>{p.o}</div>
+                          {p.t && <div style={{ fontSize: 11, color: "#777", fontStyle: "italic", marginTop: 2 }}>{p.t}</div>}
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+                            {p.type && <span style={{ fontSize: 8, color: tc, border: "1px solid " + tc, padding: "1px 6px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 1, flexShrink: 0 }}>{p.type}</span>}
+                            {p.why && <span style={{ fontSize: 11, color: "#999" }}>{p.why}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {!albumPlLoading && !tracks.some(function(t) { var e = data[t]; return e && e.st === "ok" && e.d && e.d.punchlines && e.d.punchlines.length; }) && (
+                <div style={{ color: "#444", fontSize: 11 }}>Aucun son decode pour l'instant. Decode d'abord des morceaux, puis reviens ici.</div>
+              )}
+            </div>
+          )}
+
+          {showDetail && !albumPlView && sel && (
             <div style={S.detail}>
               {isMobile && <button onClick={function() { setSel(null); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- morceaux"}</button>}
 
@@ -437,7 +508,7 @@ export default function App() {
                   {curD.punchlines && curD.punchlines.length > 0 && (
                     <Fold title="PUNCHLINES" color="#a855f7">
                       {curD.punchlines.map(function(p, pi) {
-                        var typeColors = { wordplay: "#a855f7", flex: "#f0c040", image: "#4ade80", real: "#e05030", technique: "#38bdf8" };
+                        var typeColors = { wordplay: "#a855f7", flex: "#f0c040", image: "#4ade80", real: "#e05030", depth: "#38bdf8", technique: "#38bdf8" };
                         var tc = typeColors[p.type] || "#666";
                         return (
                           <div key={pi} style={{ marginBottom: 16, paddingLeft: 10, borderLeft: "2px solid " + tc }}>
