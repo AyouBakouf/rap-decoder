@@ -29,6 +29,8 @@ var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap. On te donne UNE ligne d'un mo
 
 var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre). Donne son contexte, en parlant SIMPLE comme a un pote.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom\",\"year\":2020,\"producer\":\"prod\",\"themes\":[\"theme1\",\"theme2\"],\"summary\":\"2-3 phrases simples\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- summary: 2-3 phrases en francais COURANT pour dire de quoi parle vraiment le son. Comme a un pote. Pas de critique musicale pretentieuse.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info.";
 
+var PUNCHLINES_SYSTEM = "Tu es un connaisseur de rap avec un gout sur pour les punchlines. On te donne les paroles d'un morceau (avec traductions). Extrais les MEILLEURES punchlines.\n\nJSON UNIQUEMENT:\n{\"punchlines\":[{\"o\":\"ligne originale exacte\",\"t\":\"traduction\",\"why\":\"pourquoi ca frappe, 1 phrase simple\",\"type\":\"wordplay\"}]}\n\nRegles:\n- Entre 3 et 6 punchlines MAX. Qualite > quantite. Si le son a que 2 vraies punchlines, donne 2.\n- Copie \"o\" EXACTEMENT depuis les paroles fournies (mot pour mot).\n- \"why\": explique en langage simple pourquoi la ligne est forte. Comme a un pote. Pas de jargon.\n- \"type\": \"wordplay\" (double sens, jeu de mots) / \"flex\" (demonstration de force) / \"image\" (imagery forte) / \"real\" (verite brute, ligne touchante) / \"technique\" (flow/rime exceptionnelle)\n- Une vraie punchline = une ligne qui te fait faire 'ooh' ou reculer ta chaise. Pas juste une ligne correcte.";
+
 async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
   if (_retries === undefined) _retries = 0;
@@ -79,6 +81,7 @@ export default function App() {
   var _j = useState(null), focusLine = _j[0], setFocusLine = _j[1];
   var _k = useState(null), focusData = _k[0], setFocusData = _k[1];
   var _l = useState(false), focusLoading = _l[0], setFocusLoading = _l[1];
+  var _p = useState(false), plLoading = _p[0], setPlLoading = _p[1];
   var stopRef = useRef(false);
   var dRef = useRef({});
   var isMobile = window.innerWidth <= 700;
@@ -267,6 +270,29 @@ export default function App() {
 
   var closeFocus = function() { setFocusLine(null); setFocusData(null); };
 
+  // Extrait les meilleures punchlines du son courant (depuis les paroles deja decodees)
+  var extractPunchlines = async function() {
+    var entry = dRef.current[sel];
+    if (!entry || entry.st !== "ok" || !entry.d || !entry.d.lines) return;
+    if (entry.d.punchlines) return; // deja fait
+    setPlLoading(true);
+    try {
+      var lyricsText = entry.d.lines.map(function(l) {
+        if (l.s) return "\n" + l.s;
+        return l.o + (l.t ? "\n(" + l.t + ")" : "");
+      }).join("\n");
+      var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
+      var r = await callGemini(PUNCHLINES_SYSTEM, "Morceau: \"" + sel + "\" par " + artist + albumCtx + "\n\nPAROLES (avec traductions entre parentheses):\n" + lyricsText, false);
+      var merged = Object.assign({}, entry.d, { punchlines: (r.punchlines || []) });
+      var next = Object.assign({}, dRef.current);
+      next[sel] = { st: "ok", d: merged };
+      dRef.current = next;
+      setData(Object.assign({}, dRef.current));
+      cacheSet(artist, sel, { d: merged });
+    } catch (e) {}
+    setPlLoading(false);
+  };
+
   var cur = sel && data[sel];
   var curD = cur ? cur.d : null;
   var showSidebar = !isMobile || !sel;
@@ -395,6 +421,36 @@ export default function App() {
 
                   {curD.found && !curD.context && (
                     <div style={{ fontSize: 10, color: "#444", marginBottom: 14, fontStyle: "italic", letterSpacing: 1 }}>analyse du contexte en cours...</div>
+                  )}
+
+                  {curD.lines && curD.lines.length > 0 && !curD.punchlines && (
+                    <button onClick={extractPunchlines} disabled={plLoading} style={{
+                      background: "transparent", border: "1px solid #2a2a2a", borderRadius: 4,
+                      color: plLoading ? "#555" : "#a855f7", fontFamily: "inherit", fontSize: 10,
+                      padding: "6px 12px", cursor: plLoading ? "default" : "pointer",
+                      letterSpacing: 2, textTransform: "uppercase", marginBottom: 14,
+                    }}>
+                      {plLoading ? "extraction..." : "★ extraire les punchlines"}
+                    </button>
+                  )}
+
+                  {curD.punchlines && curD.punchlines.length > 0 && (
+                    <Fold title="PUNCHLINES" color="#a855f7">
+                      {curD.punchlines.map(function(p, pi) {
+                        var typeColors = { wordplay: "#a855f7", flex: "#f0c040", image: "#4ade80", real: "#e05030", technique: "#38bdf8" };
+                        var tc = typeColors[p.type] || "#666";
+                        return (
+                          <div key={pi} style={{ marginBottom: 16, paddingLeft: 10, borderLeft: "2px solid " + tc }}>
+                            <div style={{ fontSize: 13, color: "#ddd", lineHeight: 1.5 }}>{p.o}</div>
+                            {p.t && <div style={{ fontSize: 11, color: "#777", fontStyle: "italic", marginTop: 2 }}>{p.t}</div>}
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+                              {p.type && <span style={{ fontSize: 8, color: tc, border: "1px solid " + tc, padding: "1px 6px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 1, flexShrink: 0 }}>{p.type}</span>}
+                              {p.why && <span style={{ fontSize: 11, color: "#999" }}>{p.why}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </Fold>
                   )}
 
                   {curD.lines && curD.lines.length > 0 && (
