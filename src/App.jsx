@@ -29,7 +29,7 @@ var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap. On te donne UNE ligne d'un mo
 
 var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre). Donne son contexte, en parlant SIMPLE comme a un pote.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom\",\"year\":2020,\"producer\":\"prod\",\"themes\":[\"theme1\",\"theme2\"],\"summary\":\"2-3 phrases simples\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- summary: 2-3 phrases en francais COURANT pour dire de quoi parle vraiment le son. Comme a un pote. Pas de critique musicale pretentieuse.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info.";
 
-var PUNCHLINES_SYSTEM = "Tu es un connaisseur de rap lyrical/conscient. On te donne les paroles d'un morceau (avec traductions). Extrais les lignes les plus FORTES — celles qui restent en tete apres l'ecoute.\n\nJSON UNIQUEMENT:\n{\"punchlines\":[{\"o\":\"ligne originale exacte\",\"t\":\"traduction\",\"why\":\"pourquoi ca touche, 1-2 phrases simples\",\"type\":\"real\"}]}\n\nCE QU'ON CHERCHE (par ordre de priorite):\n1. \"real\" — verites brutes, vulnerabilite, lignes qui touchent au vecu (deuil, famille, addiction, survie). LE PLUS IMPORTANT.\n2. \"image\" — imagery qui hante, metaphores qui restent\n3. \"depth\" — double lecture qui change le sens du morceau, ligne qui prend un autre sens quand tu connais le contexte de l'artiste\n4. \"wordplay\" — seulement si le jeu de mots SERT un propos (pas juste pour briller)\n5. \"flex\" — seulement si vraiment iconique\n\nRegles:\n- Entre 3 et 6 lignes MAX. Qualite > quantite.\n- Copie \"o\" EXACTEMENT depuis les paroles fournies.\n- \"why\": explique ce que la ligne dit vraiment et pourquoi elle touche. Langage simple, comme a un pote. Si la ligne renvoie au vecu de l'artiste, dis-le.\n- Le critere: une ligne qui te fait mettre pause, pas une ligne qui te fait dire 'pas mal'.";
+var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical, profil utilisateur RateYourMusic (references de gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). On te donne les paroles d'un morceau avec traductions. Tu produis une analyse d'ECRITURE rigoureuse.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE du morceau (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes notes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes)\n- subversion: capacite a surprendre, eviter les cliches\n- profondeur: doubles lectures, sens qui s'ouvre\nSois HONNETE et severe. Un son moyen c'est 50-65. Un grand son d'ecriture c'est 80+. Reserve 90+ aux chefs-d'oeuvre. Un son avec des cliches et rimes faciles: sous 50.\n\n=== SELECTION A DEUX NIVEAUX (C) ===\n- \"essentiel\": 1 a 3 lignes MAX. Le vrai cream, celles qui passent une barre TRES haute. Si aucune ligne exceptionnelle, essentiel=[].\n- \"notable\": 2 a 4 lignes de qualite mais un cran en dessous. Peut etre [].\n- Copie \"o\" EXACTEMENT. \"why\": nomme CE QUI est bien ecrit (economie? detail concret? retournement?), langage simple.\n- types: \"craft\"/\"real\"/\"depth\"/\"subversion\"\n- Mefiance envers cliches (grind/loyaute/haters), flexes generiques, rimes faciles. L'understatement qui devaste > le gros punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas de rimes multisyllabiques (multis): quand plusieurs syllabes consecutives riment, surtout sur plusieurs lignes.\n- \"lines\": les lignes concernees (exactes)\n- \"rhymed\": pour CHAQUE ligne, extrais la portion de texte qui porte la rime multi (les mots/syllabes qui matchent phonetiquement l'autre ligne). Doit etre une sous-chaine EXACTE de la ligne.\n- \"syllables\": nombre de syllabes qui riment dans le schema\n- \"note\": pourquoi c'est technique/reussi\nSi le morceau n'a pas de vrais multis (rap simple), multis=[]. N'invente pas.\n\nQUALITE > QUANTITE partout. Ne gonfle rien.";
 
 async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
@@ -272,19 +272,23 @@ export default function App() {
 
   var closeFocus = function() { setFocusLine(null); setFocusData(null); };
 
-  // Extraction punchlines pour UN son donne (reutilisable)
+  // Analyse d'ecriture pour UN son donne (score + selection + multis)
   var extractPunchlinesFor = async function(name) {
     var entry = dRef.current[name];
     if (!entry || entry.st !== "ok" || !entry.d || !entry.d.lines) return;
-    if (entry.d.punchlines) return; // deja fait
+    if (entry.d.analysis) return; // deja fait
     try {
       var lyricsText = entry.d.lines.map(function(l) {
         if (l.s) return "\n" + l.s;
         return l.o + (l.t ? "\n(" + l.t + ")" : "");
       }).join("\n");
       var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
-      var r = await callGemini(PUNCHLINES_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtx + "\n\nPAROLES (avec traductions entre parentheses):\n" + lyricsText, false);
-      var merged = Object.assign({}, entry.d, { punchlines: (r.punchlines || []) });
+      var r = await callGemini(ANALYSIS_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtx + "\n\nPAROLES (traductions entre parentheses):\n" + lyricsText, false);
+      var analysis = {
+        score: r.score, score_breakdown: r.score_breakdown, score_note: r.score_note,
+        essentiel: r.essentiel || [], notable: r.notable || [], multis: r.multis || [],
+      };
+      var merged = Object.assign({}, entry.d, { analysis: analysis });
       var next = Object.assign({}, dRef.current);
       next[name] = { st: "ok", d: merged };
       dRef.current = next;
@@ -308,7 +312,7 @@ export default function App() {
       var e = dRef.current[t];
       return e && e.st === "ok" && e.d && e.d.lines && e.d.lines.length;
     });
-    var pending = decoded.filter(function(t) { return !dRef.current[t].d.punchlines; });
+    var pending = decoded.filter(function(t) { return !dRef.current[t].d.analysis; });
     for (var i = 0; i < pending.length; i += 2) {
       var batch = pending.slice(i, i + 2).map(function(t) { return extractPunchlinesFor(t); });
       await Promise.all(batch);
@@ -381,7 +385,7 @@ export default function App() {
                   letterSpacing: 2, textTransform: "uppercase",
                   margin: "0 12px 10px", display: "block",
                 }}>
-                  ★ best of album
+                  ★ analyser l'album
                 </button>
               )}
               {tracks.map(function(t, i) {
@@ -410,36 +414,41 @@ export default function App() {
             <div style={S.detail}>
               <button onClick={function() { setAlbumPlView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>★ Best of {album}</div>
-              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>{artist} — les lignes qui restent</div>
-              {albumPlLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><div style={Object.assign({}, S.spinner, { width: 12, height: 12, margin: 0 })} /><span style={{ fontSize: 10, color: "#555", fontStyle: "italic" }}>extraction en cours...</span></div>}
-              {tracks.map(function(t, ti) {
-                var e = data[t];
-                if (!e || e.st !== "ok" || !e.d || !e.d.punchlines || !e.d.punchlines.length) return null;
-                var typeColors = { wordplay: "#a855f7", flex: "#f0c040", image: "#4ade80", real: "#e05030", depth: "#38bdf8", technique: "#38bdf8" };
-                return (
-                  <div key={ti} style={{ marginBottom: 26 }}>
-                    <div onClick={function() { setAlbumPlView(false); decode(t, false); }} style={{ fontSize: 11, color: "#f0c040", letterSpacing: 2, textTransform: "uppercase", marginBottom: 10, cursor: "pointer" }}>
-                      <span style={{ color: "#333", marginRight: 6 }}>{String(ti + 1).padStart(2, "0")}</span>{t}
-                    </div>
-                    {e.d.punchlines.map(function(p, pi) {
-                      var tc = typeColors[p.type] || "#666";
-                      return (
-                        <div key={pi} style={{ marginBottom: 14, paddingLeft: 10, borderLeft: "2px solid " + tc }}>
-                          <div style={{ fontSize: 13, color: "#ddd", lineHeight: 1.5 }}>{p.o}</div>
-                          {p.t && <div style={{ fontSize: 11, color: "#777", fontStyle: "italic", marginTop: 2 }}>{p.t}</div>}
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
-                            {p.type && <span style={{ fontSize: 8, color: tc, border: "1px solid " + tc, padding: "1px 6px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 1, flexShrink: 0 }}>{p.type}</span>}
-                            {p.why && <span style={{ fontSize: 11, color: "#999" }}>{p.why}</span>}
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>{artist} — classe par qualite d'ecriture</div>
+              {albumPlLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><div style={Object.assign({}, S.spinner, { width: 12, height: 12, margin: 0 })} /><span style={{ fontSize: 10, color: "#555", fontStyle: "italic" }}>analyse en cours...</span></div>}
+              {(function() {
+                var analyzed = tracks.map(function(t, ti) {
+                  var e = data[t];
+                  if (!e || e.st !== "ok" || !e.d || !e.d.analysis) return null;
+                  return { name: t, idx: ti, a: e.d.analysis };
+                }).filter(Boolean);
+                analyzed.sort(function(x, y) { return (y.a.score || 0) - (x.a.score || 0); });
+                if (!albumPlLoading && analyzed.length === 0) {
+                  return <div style={{ color: "#444", fontSize: 11 }}>Aucun son analyse. Decode d'abord des morceaux, puis reviens ici.</div>;
+                }
+                return analyzed.map(function(item, rank) {
+                  var a = item.a;
+                  var scoreColor = a.score >= 80 ? "#4ade80" : a.score >= 65 ? "#f0c040" : a.score >= 50 ? "#e0a030" : "#e05030";
+                  var best = (a.essentiel && a.essentiel.length ? a.essentiel : (a.notable || [])).slice(0, 2);
+                  return (
+                    <div key={item.name} style={{ marginBottom: 24 }}>
+                      <div onClick={function() { setAlbumPlView(false); decode(item.name, false); }} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer" }}>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor, minWidth: 34 }}>{a.score}</span>
+                        <span style={{ fontSize: 12, color: "#f0c040", letterSpacing: 1, textTransform: "uppercase" }}>{item.name}</span>
+                      </div>
+                      {best.map(function(p, pi) {
+                        var tc = TYPE_COLORS[p.type] || "#666";
+                        return (
+                          <div key={pi} style={{ marginBottom: 10, paddingLeft: 10, borderLeft: "2px solid " + tc }}>
+                            <div style={{ fontSize: 13, color: "#ddd", lineHeight: 1.5 }}>{p.o}</div>
+                            {p.why && <div style={{ fontSize: 10, color: "#888", marginTop: 3 }}>{p.why}</div>}
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-              {!albumPlLoading && !tracks.some(function(t) { var e = data[t]; return e && e.st === "ok" && e.d && e.d.punchlines && e.d.punchlines.length; }) && (
-                <div style={{ color: "#444", fontSize: 11 }}>Aucun son decode pour l'instant. Decode d'abord des morceaux, puis reviens ici.</div>
-              )}
+                        );
+                      })}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           )}
 
@@ -494,35 +503,18 @@ export default function App() {
                     <div style={{ fontSize: 10, color: "#444", marginBottom: 14, fontStyle: "italic", letterSpacing: 1 }}>analyse du contexte en cours...</div>
                   )}
 
-                  {curD.lines && curD.lines.length > 0 && !curD.punchlines && (
+                  {curD.lines && curD.lines.length > 0 && !curD.analysis && (
                     <button onClick={extractPunchlines} disabled={plLoading} style={{
                       background: "transparent", border: "1px solid #2a2a2a", borderRadius: 4,
                       color: plLoading ? "#555" : "#a855f7", fontFamily: "inherit", fontSize: 10,
                       padding: "6px 12px", cursor: plLoading ? "default" : "pointer",
                       letterSpacing: 2, textTransform: "uppercase", marginBottom: 14,
                     }}>
-                      {plLoading ? "extraction..." : "★ extraire les punchlines"}
+                      {plLoading ? "analyse..." : "★ analyser l'ecriture"}
                     </button>
                   )}
 
-                  {curD.punchlines && curD.punchlines.length > 0 && (
-                    <Fold title="PUNCHLINES" color="#a855f7">
-                      {curD.punchlines.map(function(p, pi) {
-                        var typeColors = { wordplay: "#a855f7", flex: "#f0c040", image: "#4ade80", real: "#e05030", depth: "#38bdf8", technique: "#38bdf8" };
-                        var tc = typeColors[p.type] || "#666";
-                        return (
-                          <div key={pi} style={{ marginBottom: 16, paddingLeft: 10, borderLeft: "2px solid " + tc }}>
-                            <div style={{ fontSize: 13, color: "#ddd", lineHeight: 1.5 }}>{p.o}</div>
-                            {p.t && <div style={{ fontSize: 11, color: "#777", fontStyle: "italic", marginTop: 2 }}>{p.t}</div>}
-                            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
-                              {p.type && <span style={{ fontSize: 8, color: tc, border: "1px solid " + tc, padding: "1px 6px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 1, flexShrink: 0 }}>{p.type}</span>}
-                              {p.why && <span style={{ fontSize: 11, color: "#999" }}>{p.why}</span>}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </Fold>
-                  )}
+                  {curD.analysis && <AnalysisView a={curD.analysis} />}
 
                   {curD.lines && curD.lines.length > 0 && (
                     <Fold title="PAROLES + TRADUCTION" color="#4ade80">
@@ -634,6 +626,118 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ============ ANALYSE D'ECRITURE (score + selection + multis) ============
+
+var TYPE_COLORS = { craft: "#a855f7", real: "#e05030", depth: "#38bdf8", subversion: "#f0c040", wordplay: "#a855f7", image: "#4ade80", flex: "#f0c040", technique: "#38bdf8" };
+
+// Surligne une sous-chaine (portion qui rime) dans une ligne
+function highlightRhyme(line, portion, color) {
+  if (!portion) return line;
+  var idx = line.toLowerCase().indexOf(portion.toLowerCase());
+  if (idx < 0) return line;
+  var before = line.slice(0, idx);
+  var match = line.slice(idx, idx + portion.length);
+  var after = line.slice(idx + portion.length);
+  return [
+    before,
+    <span key="m" style={{ color: color, fontWeight: 700, textShadow: "0 0 8px " + color + "60", borderBottom: "1px solid " + color }}>{match}</span>,
+    after,
+  ];
+}
+
+function LineCard(props) {
+  var p = props.p;
+  var tc = TYPE_COLORS[p.type] || "#666";
+  return (
+    <div style={{ marginBottom: 16, paddingLeft: 10, borderLeft: "2px solid " + tc }}>
+      <div style={{ fontSize: 13, color: "#e6e6e6", lineHeight: 1.5 }}>{p.o}</div>
+      {p.t && <div style={{ fontSize: 11, color: "#777", fontStyle: "italic", marginTop: 2 }}>{p.t}</div>}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+        {p.type && <span style={{ fontSize: 8, color: tc, border: "1px solid " + tc, padding: "1px 6px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 1, flexShrink: 0 }}>{p.type}</span>}
+        {p.why && <span style={{ fontSize: 11, color: "#999" }}>{p.why}</span>}
+      </div>
+    </div>
+  );
+}
+
+function MultiCard(props) {
+  var m = props.m;
+  var color = "#38bdf8";
+  return (
+    <div style={{ marginBottom: 16, padding: "10px 12px", background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6 }}>
+      <div style={{ marginBottom: 6 }}>
+        {(m.lines || []).map(function(ln, i) {
+          var portion = (m.rhymed && m.rhymed[i]) || "";
+          return <div key={i} style={{ fontSize: 13, color: "#ccc", lineHeight: 1.6, fontFamily: "inherit" }}>{highlightRhyme(ln, portion, color)}</div>;
+        })}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {m.syllables ? <span style={{ fontSize: 8, color: color, border: "1px solid " + color, padding: "1px 6px", borderRadius: 10, letterSpacing: 1, textTransform: "uppercase" }}>{m.syllables} syllabes</span> : null}
+        {m.note && <span style={{ fontSize: 11, color: "#888" }}>{m.note}</span>}
+      </div>
+    </div>
+  );
+}
+
+function ScoreBar(props) {
+  var label = props.label, val = props.val;
+  var pct = Math.max(0, Math.min(10, val || 0)) * 10;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+      <span style={{ fontSize: 9, color: "#666", width: 72, textTransform: "uppercase", letterSpacing: 1, flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1, height: 4, background: "#1a1a1a", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ width: pct + "%", height: "100%", background: "#a855f7" }} />
+      </div>
+      <span style={{ fontSize: 9, color: "#888", width: 20, textAlign: "right" }}>{val}</span>
+    </div>
+  );
+}
+
+function AnalysisView(props) {
+  var a = props.a;
+  var score = a.score;
+  var scoreColor = score >= 80 ? "#4ade80" : score >= 65 ? "#f0c040" : score >= 50 ? "#e0a030" : "#e05030";
+  var bd = a.score_breakdown || {};
+  var essentiel = a.essentiel || [], notable = a.notable || [], multis = a.multis || [];
+  return (
+    <div style={{ marginBottom: 24 }}>
+      {typeof score === "number" && (
+        <Fold title="SCORE D'ECRITURE" color="#a855f7">
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+            <div style={{ fontSize: 40, fontWeight: 800, color: scoreColor, lineHeight: 1, fontFamily: "inherit" }}>{score}<span style={{ fontSize: 14, color: "#444" }}>/100</span></div>
+            {a.score_note && <div style={{ fontSize: 11, color: "#999", flex: 1, lineHeight: 1.5 }}>{a.score_note}</div>}
+          </div>
+          <div>
+            {bd.economie != null && <ScoreBar label="economie" val={bd.economie} />}
+            {bd.imagery != null && <ScoreBar label="imagery" val={bd.imagery} />}
+            {bd.rimes != null && <ScoreBar label="rimes" val={bd.rimes} />}
+            {bd.subversion != null && <ScoreBar label="subversion" val={bd.subversion} />}
+            {bd.profondeur != null && <ScoreBar label="profondeur" val={bd.profondeur} />}
+          </div>
+        </Fold>
+      )}
+
+      {essentiel.length > 0 && (
+        <Fold title={"ESSENTIEL (" + essentiel.length + ")"} color="#e05030">
+          {essentiel.map(function(p, i) { return <LineCard key={i} p={p} />; })}
+        </Fold>
+      )}
+
+      {notable.length > 0 && (
+        <Fold title={"NOTABLE (" + notable.length + ")"} color="#888">
+          {notable.map(function(p, i) { return <LineCard key={i} p={p} />; })}
+        </Fold>
+      )}
+
+      {multis.length > 0 && (
+        <Fold title={"MULTIS (" + multis.length + ")"} color="#38bdf8">
+          {multis.map(function(m, i) { return <MultiCard key={i} m={m} />; })}
+        </Fold>
       )}
     </div>
   );
