@@ -29,7 +29,7 @@ var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap. On te donne UNE ligne d'un mo
 
 var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre). Donne son contexte, en parlant SIMPLE comme a un pote.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom\",\"year\":2020,\"producer\":\"prod\",\"themes\":[\"theme1\",\"theme2\"],\"summary\":\"2-3 phrases simples\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- summary: 2-3 phrases en francais COURANT pour dire de quoi parle vraiment le son. Comme a un pote. Pas de critique musicale pretentieuse.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info.";
 
-var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical, profil utilisateur RateYourMusic (references de gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). On te donne les paroles d'un morceau avec traductions. Tu produis une analyse d'ECRITURE rigoureuse.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE du morceau (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes notes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes)\n- subversion: capacite a surprendre, eviter les cliches\n- profondeur: doubles lectures, sens qui s'ouvre\nSois HONNETE et severe. Un son moyen c'est 50-65. Un grand son d'ecriture c'est 80+. Reserve 90+ aux chefs-d'oeuvre. Un son avec des cliches et rimes faciles: sous 50.\n\n=== SELECTION A DEUX NIVEAUX (C) ===\n- \"essentiel\": 1 a 3 lignes MAX. Le vrai cream, celles qui passent une barre TRES haute. Si aucune ligne exceptionnelle, essentiel=[].\n- \"notable\": 2 a 4 lignes de qualite mais un cran en dessous. Peut etre [].\n- Copie \"o\" EXACTEMENT. \"why\": nomme CE QUI est bien ecrit (economie? detail concret? retournement?), langage simple.\n- types: \"craft\"/\"real\"/\"depth\"/\"subversion\"\n- Mefiance envers cliches (grind/loyaute/haters), flexes generiques, rimes faciles. L'understatement qui devaste > le gros punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas de rimes multisyllabiques (multis): quand plusieurs syllabes consecutives riment, surtout sur plusieurs lignes.\n- \"lines\": les lignes concernees (exactes)\n- \"rhymed\": pour CHAQUE ligne, extrais la portion de texte qui porte la rime multi (les mots/syllabes qui matchent phonetiquement l'autre ligne). Doit etre une sous-chaine EXACTE de la ligne.\n- \"syllables\": nombre de syllabes qui riment dans le schema\n- \"note\": pourquoi c'est technique/reussi\nSi le morceau n'a pas de vrais multis (rap simple), multis=[]. N'invente pas.\n\nQUALITE > QUANTITE partout. Ne gonfle rien.";
+var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical, profil utilisateur RateYourMusic (references de gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). On te donne les paroles d'un morceau avec traductions. Tu produis une analyse d'ECRITURE rigoureuse.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE du morceau (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes notes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes)\n- subversion: capacite a surprendre, eviter les cliches\n- profondeur: doubles lectures, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture (le meilleur Ka, woods, DOOM, Earl au sommet)\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief particulier\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son de rap lyrical doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Si l'ecriture est vraiment forte, mets une vraie note haute. Sois discriminant entre les sons.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur, donc creuse:\n- \"essentiel\": 2 a 4 lignes. Le cream du morceau.\n- \"notable\": 3 a 6 lignes de qualite.\n- Copie \"o\" EXACTEMENT. \"t\": TOUJOURS la traduction. \"why\": nomme CE QUI est bien ecrit (economie? detail? retournement?), langage simple.\n- types: \"craft\"/\"real\"/\"depth\"/\"subversion\"\n- Mefiance envers cliches (grind/loyaute/haters), flexes generiques, rimes faciles. L'understatement qui devaste > le gros punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas de rimes multisyllabiques (multis): quand plusieurs syllabes consecutives riment, surtout sur plusieurs lignes.\n- \"lines\": les lignes concernees (exactes)\n- \"rhymed\": pour CHAQUE ligne, extrais la portion de texte qui porte la rime multi (les mots/syllabes qui matchent phonetiquement l'autre ligne). Doit etre une sous-chaine EXACTE de la ligne.\n- \"syllables\": nombre de syllabes qui riment dans le schema\n- \"note\": pourquoi c'est technique/reussi\nSi le morceau n'a pas de vrais multis (rap simple), multis=[]. N'invente pas.\n\nQUALITE > QUANTITE partout. Ne gonfle rien.";
 
 async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
@@ -414,7 +414,7 @@ export default function App() {
             <div style={S.detail}>
               <button onClick={function() { setAlbumPlView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>★ Best of {album}</div>
-              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>{artist} — classe par qualite d'ecriture</div>
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>{artist} — les meilleures lignes du disque</div>
               {albumPlLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><div style={Object.assign({}, S.spinner, { width: 12, height: 12, margin: 0 })} /><span style={{ fontSize: 10, color: "#555", fontStyle: "italic" }}>analyse en cours...</span></div>}
               {(function() {
                 var analyzed = tracks.map(function(t, ti) {
@@ -422,29 +422,34 @@ export default function App() {
                   if (!e || e.st !== "ok" || !e.d || !e.d.analysis) return null;
                   return { name: t, idx: ti, a: e.d.analysis };
                 }).filter(Boolean);
-                analyzed.sort(function(x, y) { return (y.a.score || 0) - (x.a.score || 0); });
                 if (!albumPlLoading && analyzed.length === 0) {
                   return <div style={{ color: "#444", fontSize: 11 }}>Aucun son analyse. Decode d'abord des morceaux, puis reviens ici.</div>;
                 }
-                return analyzed.map(function(item, rank) {
-                  var a = item.a;
-                  var scoreColor = a.score >= 80 ? "#4ade80" : a.score >= 65 ? "#f0c040" : a.score >= 50 ? "#e0a030" : "#e05030";
-                  var best = (a.essentiel && a.essentiel.length ? a.essentiel : (a.notable || [])).slice(0, 2);
+                // Pool: uniquement les lignes ESSENTIELLES de chaque son (le vrai cream)
+                var pool = [];
+                analyzed.forEach(function(item) {
+                  (item.a.essentiel || []).forEach(function(p) {
+                    pool.push({ p: p, song: item.name, score: item.a.score || 0 });
+                  });
+                });
+                // Trie par score du son (les lignes des meilleurs sons remontent), garde le top
+                pool.sort(function(x, y) { return y.score - x.score; });
+                var top = pool.slice(0, 12);
+                if (!albumPlLoading && top.length === 0) {
+                  return <div style={{ color: "#444", fontSize: 11 }}>Pas encore de lignes essentielles. Analyse plus de morceaux.</div>;
+                }
+                return top.map(function(item, i) {
+                  var p = item.p;
+                  var tc = TYPE_COLORS[p.type] || "#666";
                   return (
-                    <div key={item.name} style={{ marginBottom: 24 }}>
-                      <div onClick={function() { setAlbumPlView(false); decode(item.name, false); }} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer" }}>
-                        <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor, minWidth: 34 }}>{a.score}</span>
-                        <span style={{ fontSize: 12, color: "#f0c040", letterSpacing: 1, textTransform: "uppercase" }}>{item.name}</span>
+                    <div key={i} style={{ marginBottom: 18, paddingLeft: 10, borderLeft: "2px solid " + tc }}>
+                      <div style={{ fontSize: 14, color: "#e6e6e6", lineHeight: 1.5 }}>{p.o}</div>
+                      {p.t && <div style={{ fontSize: 11, color: "#777", fontStyle: "italic", marginTop: 2 }}>{p.t}</div>}
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+                        {p.type && <span style={{ fontSize: 8, color: tc, border: "1px solid " + tc, padding: "1px 6px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 1, flexShrink: 0 }}>{p.type}</span>}
+                        <span onClick={function() { setAlbumPlView(false); decode(item.song, false); }} style={{ fontSize: 9, color: "#f0c040", cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" }}>{item.song}</span>
+                        {p.why && <span style={{ fontSize: 11, color: "#999" }}>{p.why}</span>}
                       </div>
-                      {best.map(function(p, pi) {
-                        var tc = TYPE_COLORS[p.type] || "#666";
-                        return (
-                          <div key={pi} style={{ marginBottom: 10, paddingLeft: 10, borderLeft: "2px solid " + tc }}>
-                            <div style={{ fontSize: 13, color: "#ddd", lineHeight: 1.5 }}>{p.o}</div>
-                            {p.why && <div style={{ fontSize: 10, color: "#888", marginTop: 3 }}>{p.why}</div>}
-                          </div>
-                        );
-                      })}
                     </div>
                   );
                 });
