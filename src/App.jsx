@@ -25,11 +25,13 @@ var TRACKLIST_SYSTEM = "Tu donnes les tracklists d'albums. Reponds en JSON: {\"t
 
 var TRANSLATE_SYSTEM = "Tu es un traducteur rap. On te donne les PAROLES EXACTES d'un morceau, tu retournes la traduction française ligne par ligne en JSON.\n\nREGLE NUMERO 1, ABSOLUE: pour CHAQUE ligne tu DOIS produire un objet {\"o\":\"ligne originale\",\"t\":\"TRADUCTION FRANCAISE\",\"c\":confiance}. Le champ \"t\" doit TOUJOURS contenir la traduction française complète. Ne laisse JAMAIS \"t\" vide, null, ou identique a \"o\". Si une ligne est intraduisible, mets \"t\":\"<intraduisible>\". C'est ta seule mission: TRADUIRE.\n\nAutres regles:\n- Regroupe les lignes trop courtes qui font partie de la meme phrase en UNE seule.\n- Sections: titres generiques [Intro], [Verse 1], [Chorus], [Bridge], [Outro], [Interlude]. JAMAIS le nom d'un rappeur.\n- Inclus TOUTES les lignes (interludes, skits, outros). Coupe RIEN.\n- \"c\" = confiance 0-100. 100 = trad evidente. <70 = slang rare, ref obscure, sens incertain.\n- Si tout le morceau est en francais: \"t\":null pour chaque ligne, lang=\"francais\".\n- Contexte rap: \"bitch\"=\"meuf\" (jamais pute). \"nigga\"=ne traduis pas. \"whip\"=\"caisse\". Registre rap francais, pas francais scolaire.\n\nNotes de decryptage (champ \"notes\"):\n- \"r\"=mot/expression, \"e\"=explication courte, \"t\"=type (\"slang\"/\"ref\"/\"wordplay\"/\"sample\")\n\nFormat JSON:\n{\n\"lang\":\"anglais\",\n\"lines\":[\n{\"s\":\"[Intro]\"},\n{\"o\":\"ligne originale\",\"t\":\"traduction francaise\",\"c\":95}\n],\n\"notes\":[\n{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"ref\"}\n]\n}";
 
-var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap. On te donne UNE ligne d'un morceau, le contexte, et les lignes autour. Adapte-toi a la langue (anglais ou francais).\n\nSois BREF et va droit au but. Pas de paraphrase de la traduction. Pas de blabla.\n\nReponds en JSON:\n{\n\"meaning\":\"ce que l'artiste dit vraiment, 1-2 phrases max\",\n\"refs\":[{\"r\":\"ref\",\"e\":\"explication courte\"}] ou [] si aucune ref notable,\n\"wordplay\":\"explication courte SEULEMENT si wordplay/double sens/multi marquant, sinon null\"\n}\n\nRegles:\n- Pas de \\\"sens litteral\\\" (evident).\n- Refs = personnes, marques, lieux, evenements, samples, argot/verlan. Si straight talk sans ref, refs=[].\n- Wordplay = double sens, calembour, homophonie, multisyllabique. Uniquement si vraiment notable.\n- Rap FR: repere bien les jeux de mots et l'argot. Tout en francais, ton direct.";
+var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap. On te donne UNE ligne d'un morceau, le contexte, et les lignes autour. La ligne peut etre en anglais ou en francais.\n\nREGLE ABSOLUE: tu reponds TOUJOURS en FRANCAIS, quelle que soit la langue de la ligne analysee. JAMAIS en anglais. Meme si le morceau est anglophone, ton analyse est en francais.\n\nSois BREF et va droit au but. Pas de paraphrase. Pas de blabla.\n\nReponds en JSON (contenu EN FRANCAIS):\n{\n\"meaning\":\"ce que l'artiste dit vraiment, 1-2 phrases max, EN FRANCAIS\",\n\"refs\":[{\"r\":\"ref\",\"e\":\"explication courte EN FRANCAIS\"}] ou [] si aucune ref notable,\n\"wordplay\":\"explication EN FRANCAIS si wordplay/double sens/multi marquant, sinon null\"\n}\n\nRegles:\n- Pas de \\\"sens litteral\\\" (evident).\n- Refs = personnes, marques, lieux, evenements, samples, argot/verlan. Si straight talk sans ref, refs=[].\n- Wordplay = double sens, calembour, homophonie, multisyllabique. Uniquement si vraiment notable.\n- TOUT le contenu de ta reponse est redige en francais, ton direct.";
 
 var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre). Donne son contexte, en parlant SIMPLE comme a un pote.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom\",\"year\":2020,\"producer\":\"prod\",\"themes\":[\"theme1\",\"theme2\"],\"summary\":\"2-3 phrases simples\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- summary: 2-3 phrases en francais COURANT pour dire de quoi parle vraiment le son. Comme a un pote. Pas de critique musicale pretentieuse.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info.";
 
-var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur, creuse:\n- \"essentiel\": 2 a 4 lignes. Le cream (meilleures punchlines/images/multis selon le style).\n- \"notable\": 3 a 6 lignes de qualite.\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais. \"why\": nomme CE QUI est bien ecrit (le wordplay? le multi? la chute? le detail?), langage simple.\n- types: \"craft\" (technique/structure) / \"real\" (vecu) / \"depth\" (double sens) / \"subversion\" (chute inattendue, punchline)\n- Rap FR: privilegie les vraies punchlines et les jeux de mots. Rap anglophone: l'understatement qui devaste compte autant que la punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment, surtout sur plusieurs lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes)\n- \"rhymed\": pour CHAQUE ligne, la portion EXACTE qui porte la rime multi (sous-chaine exacte de la ligne)\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\nSi pas de vrais multis, multis=[]. N'invente pas.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. Phrases bien construites, pas de traduction mot-a-mot bancale, pas de tournures bizarres. Relis-toi mentalement.";
+var BEST_BARS_SYSTEM = "Tu es un amoureux de rap qui cherche les lignes qui TOUCHENT. On te donne les paroles d'un ALBUM ENTIER (plusieurs morceaux). Tu dois extraire les lignes les plus fortes de l'album.\n\nJSON UNIQUEMENT:\n{\"bars\":[{\"o\":\"ligne originale exacte\",\"t\":\"traduction francaise qui frappe\",\"track\":\"nom du morceau\",\"why\":\"pourquoi c'est fort, 1 phrase\",\"impact\":8}]}\n\nCRITERES DE SELECTION (dans l'ordre):\n1. Les IMAGES CONCRETES et les EXPERIENCES HUMAINES UNIVERSELLES: pauvrete, perte, survie, identite, famille, rue, solitude. Le vecu brut qui parle a tout le monde.\n2. Les lignes dont la TRADUCTION FRANCAISE FRAPPE SEULE. C'est le test ultime: un auditeur de rap francais qui parle pas anglais doit recevoir la barre en pleine gueule rien qu'avec ta traduction. Si faut un cours de litterature ou connaitre 3 refs US pour comprendre, c'est PAS la bonne barre.\n3. Le detail SPECIFIQUE qui rend la ligne vraie (un lieu, un objet, un souvenir precis) > la generalite abstraite.\n4. Show don't tell: une image qui MONTRE l'emotion > une ligne qui la NOMME.\n\nTRADUCTION: c'est pas du mot-a-mot. C'est une REFORMULATION qui garde l'impact en francais. La traduction doit sonner comme une vraie barre de rap francais, pas comme une version sous-titree. Adapte, reformule, tant que le sens et l'impact restent.\n\nREGLES:\n- 8 a 15 barres pour un album entier. Selectif mais pas avare.\n- \"impact\": note de 1 a 10. 10 = la barre qui te hante. 7-8 = tres forte. En dessous de 7 = elle devrait meme pas etre dans la liste.\n- \"why\": UNE phrase simple, en francais, qui dit pourquoi ca touche. Pas de jargon.\n- Copie \"o\" EXACTEMENT depuis les paroles fournies.\n- \"track\": nom exact du morceau.\n- Trie les barres par impact decroissant (la plus forte en premier).\n- MEFIANCE: les punchlines purement techniques (wordplay malin mais froid), les flexes generiques, les cliches loyalty/grind. Ca impressionne mais ca touche pas.\n\nEN FRANCAIS. Tout le contenu (why, t) est en francais.";
+
+var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur, creuse:\n- \"essentiel\": 2 a 4 lignes. Le cream (meilleures punchlines/images/multis selon le style).\n- \"notable\": 3 a 6 lignes de qualite.\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais. \"why\": nomme CE QUI est bien ecrit (le wordplay? le multi? la chute? le detail?), langage simple.\n- types: \"craft\" (technique/structure) / \"real\" (vecu) / \"depth\" (double sens) / \"subversion\" (chute inattendue, punchline)\n- Rap FR: privilegie les vraies punchlines et les jeux de mots. Rap anglophone: l'understatement qui devaste compte autant que la punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment, surtout sur plusieurs lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes)\n- \"rhymed\": pour CHAQUE ligne, la portion EXACTE qui porte la rime multi (sous-chaine exacte de la ligne)\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\nSi pas de vrais multis, multis=[]. N'invente pas.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note, note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. TOUJOURS en francais, MEME pour un morceau anglophone (seul le champ \"o\" garde la langue originale, et \"t\" la traduction). Phrases bien construites, pas de tournures bizarres.";
 
 async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
@@ -84,6 +86,9 @@ export default function App() {
   var _p = useState(false), plLoading = _p[0], setPlLoading = _p[1];
   var _ap = useState(false), albumPlView = _ap[0], setAlbumPlView = _ap[1];
   var _apl = useState(false), albumPlLoading = _apl[0], setAlbumPlLoading = _apl[1];
+  var _bb = useState(null), bestBars = _bb[0], setBestBars = _bb[1];
+  var _bbv = useState(false), bestBarsView = _bbv[0], setBestBarsView = _bbv[1];
+  var _bbl = useState(false), bestBarsLoading = _bbl[0], setBestBarsLoading = _bbl[1];
   var stopRef = useRef(false);
   var dRef = useRef({});
   var isMobile = window.innerWidth <= 700;
@@ -247,6 +252,7 @@ export default function App() {
   var reset = function() {
     stopRef.current = true; setView("input"); setTracks([]); setData({});
     dRef.current = {}; setSel(null); setAuto(false); setDone(0);
+    setBestBars(null); setBestBarsView(false);
     sessionClear();
   };
 
@@ -271,6 +277,31 @@ export default function App() {
   };
 
   var closeFocus = function() { setFocusLine(null); setFocusData(null); };
+
+  // Best Bars: envoie TOUTES les paroles de l'album en un seul appel
+  var extractBestBars = async function() {
+    setBestBarsView(true);
+    if (bestBars) return; // deja fait
+    setBestBarsLoading(true);
+    try {
+      var allLyrics = "";
+      tracks.forEach(function(t) {
+        var e = dRef.current[t];
+        if (!e || e.st !== "ok" || !e.d || !e.d.lines) return;
+        allLyrics += "\n\n=== " + t + " ===\n";
+        e.d.lines.forEach(function(l) {
+          if (l.s) allLyrics += "\n" + l.s + "\n";
+          else if (l.o) allLyrics += l.o + "\n";
+        });
+      });
+      var r = await callGemini(BEST_BARS_SYSTEM, "Album: \"" + album + "\" par " + artist + "\n\nPAROLES COMPLETES:\n" + allLyrics, false);
+      var bars = (r.bars || []).sort(function(a, b) { return (b.impact || 0) - (a.impact || 0); });
+      setBestBars(bars);
+    } catch (e) {
+      setBestBars([]);
+    }
+    setBestBarsLoading(false);
+  };
 
   // Analyse d'ecriture pour UN son donne (score + selection + multis)
   var extractPunchlinesFor = async function(name) {
@@ -322,8 +353,8 @@ export default function App() {
 
   var cur = sel && data[sel];
   var curD = cur ? cur.d : null;
-  var showSidebar = !isMobile || (!sel && !albumPlView);
-  var showDetail = !isMobile || sel || albumPlView;
+  var showSidebar = !isMobile || (!sel && !albumPlView && !bestBarsView);
+  var showDetail = !isMobile || sel || albumPlView || bestBarsView;
   var headerLabel = mode === "single" ? single : album;
 
   return (
@@ -383,9 +414,20 @@ export default function App() {
                   color: "#a855f7", fontFamily: "inherit", fontSize: 9,
                   padding: "5px 10px", cursor: "pointer",
                   letterSpacing: 2, textTransform: "uppercase",
-                  margin: "0 12px 10px", display: "block",
+                  margin: "0 12px 5px", display: "block",
                 }}>
                   ★ analyser l'album
+                </button>
+              )}
+              {mode === "album" && done === tracks.length && tracks.length > 0 && (
+                <button onClick={extractBestBars} style={{
+                  background: "transparent", border: "1px solid #2a1a10", borderRadius: 4,
+                  color: "#e05030", fontFamily: "inherit", fontSize: 9,
+                  padding: "5px 10px", cursor: "pointer",
+                  letterSpacing: 2, textTransform: "uppercase",
+                  margin: "0 12px 10px", display: "block",
+                }}>
+                  ★ best bars
                 </button>
               )}
               {tracks.map(function(t, i) {
@@ -393,7 +435,7 @@ export default function App() {
                 var isSel = sel === t;
                 var colors = { idle: "#222", load: "#f0c040", ok: "#4ade80", err: "#ef4444" };
                 return (
-                  <div key={i} onClick={function() { setAlbumPlView(false); decode(t, false); }} style={Object.assign({}, S.trackRow, {
+                  <div key={i} onClick={function() { setAlbumPlView(false); setBestBarsView(false); decode(t, false); }} style={Object.assign({}, S.trackRow, {
                     background: isSel ? "#131313" : "transparent",
                     borderLeft: isSel ? "2px solid #f0c040" : "2px solid transparent",
                   })}>
@@ -410,7 +452,34 @@ export default function App() {
             </div>
           )}
 
-          {showDetail && albumPlView && (
+          {showDetail && bestBarsView && (
+            <div style={S.detail}>
+              <button onClick={function() { setBestBarsView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <div style={S.trackTitle}>★ Best Bars</div>
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 6 }}>{artist} — {album}</div>
+              <div style={{ fontSize: 10, color: "#333", marginBottom: 22, fontStyle: "italic" }}>Les lignes qui touchent, triees par impact. La traduction doit frapper seule.</div>
+              {bestBarsLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><div style={Object.assign({}, S.spinner, { width: 12, height: 12, margin: 0 })} /><span style={{ fontSize: 10, color: "#555", fontStyle: "italic" }}>extraction des best bars...</span></div>}
+              {bestBars && bestBars.length > 0 && bestBars.map(function(bar, i) {
+                var impactColor = bar.impact >= 9 ? "#e05030" : bar.impact >= 7 ? "#f0c040" : "#888";
+                return (
+                  <div key={i} style={{ marginBottom: 24, paddingLeft: 12, borderLeft: "3px solid " + impactColor }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 22, fontWeight: 800, color: impactColor, lineHeight: 1 }}>{bar.impact}</span>
+                      <span onClick={function() { setBestBarsView(false); decode(bar.track, false); }} style={{ fontSize: 9, color: "#f0c040", cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" }}>{bar.track}</span>
+                    </div>
+                    <div style={{ fontSize: 14, color: "#e6e6e6", lineHeight: 1.6, marginBottom: 4 }}>{bar.o}</div>
+                    <div style={{ fontSize: 13, color: "#e05030", lineHeight: 1.5, fontStyle: "italic", marginBottom: 6 }}>{bar.t}</div>
+                    {bar.why && <div style={{ fontSize: 11, color: "#777", lineHeight: 1.4 }}>{bar.why}</div>}
+                  </div>
+                );
+              })}
+              {bestBars && bestBars.length === 0 && !bestBarsLoading && (
+                <div style={{ color: "#444", fontSize: 11 }}>Aucune barre trouvee.</div>
+              )}
+            </div>
+          )}
+
+          {showDetail && albumPlView && !bestBarsView && (
             <div style={S.detail}>
               <button onClick={function() { setAlbumPlView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>★ Best of {album}</div>
