@@ -19,6 +19,9 @@ export default async function handler(req, res) {
   };
 
   try {
+    var controller = new AbortController();
+    var timeout = setTimeout(function() { controller.abort(); }, 55000); // 55 sec timeout
+
     var response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -28,12 +31,13 @@ export default async function handler(req, res) {
         'X-Title': 'Rap Decoder',
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeout);
     var raw = await response.text();
 
     if (!response.ok) {
-      // Rate limit: return structured retry info
       if (response.status === 429) {
         return res.status(429).json({ rateLimited: true, retryAfter: 30, error: 'Rate limit OpenRouter' });
       }
@@ -46,29 +50,45 @@ export default async function handler(req, res) {
     }
 
     if (data.error) {
-      return res.status(500).json({ error: data.error.message || 'OpenRouter error' });
+      return res.status(500).json({ error: data.error.message || JSON.stringify(data.error).slice(0, 500) });
     }
 
-    // Extract text from OpenAI-compatible response
+    // DeepSeek R1 response format:
+    // choices[0].message.content = the actual response
+    // choices[0].message.reasoning_content = the thinking (optional, ignore)
     var text = "";
     if (data.choices && data.choices[0] && data.choices[0].message) {
       text = data.choices[0].message.content || "";
     }
 
     if (!text) {
-      return res.status(500).json({ error: "Reponse vide de DeepSeek" });
+      // Debug: return what we got
+      return res.status(500).json({ 
+        error: "Reponse vide de DeepSeek", 
+        debug: JSON.stringify(data).slice(0, 2000) 
+      });
     }
 
-    // Clean up: strip markdown fences
-    var cleaned = text.trim();
-    cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+    // R1 can put <think>...</think> before the actual content
+    text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 
-    // Try to extract JSON
+    // Clean markdown fences
+    var cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+
+    // Extract JSON
     var jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) cleaned = jsonMatch[0];
 
     res.status(200).json({ text: cleaned });
   } catch (e) {
+    if (e.name === 'AbortError') {
+      return res.status(504).json({ error: 'DeepSeek a mis trop de temps (>55s). Reessaie.' });
+    }
     res.status(500).json({ error: e.message });
   }
 }
+
+// Vercel: augmenter le timeout de la fonction
+export const config = {
+  maxDuration: 60,
+};
