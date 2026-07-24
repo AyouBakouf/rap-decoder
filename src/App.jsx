@@ -31,7 +31,7 @@ var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + 
 
 var BEST_BARS_SYSTEM = "Tu es un amoureux de rap qui cherche les MOMENTS qui touchent. On te donne les paroles d'un ALBUM ENTIER. Extrais les meilleurs PASSAGES (4-8 barres consecutives).\n\nJSON UNIQUEMENT:\n{\"bars\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"sens\":\"explication simple du passage\",\"track\":\"nom du morceau\",\"why\":\"pourquoi ca touche\",\"impact\":8}]}\n\nFORMAT \"lines\":\nChaque ligne est un objet {\"o\":\"original\",\"t\":\"traduction\"}. La traduction \"t\" doit etre CLAIRE et COMPREHENSIBLE. Si l'original dit 'Black marionettes dance limp, over the pit', la trad doit dire quelque chose comme 'Des marionnettes noires dansent mollement au-dessus du gouffre' — pas de flou, pas de poesie qui rajoute du mystere. On veut COMPRENDRE.\n\nCHAMP \"sens\" (OBLIGATOIRE, LE PLUS IMPORTANT):\nExplique le passage en 2-4 phrases ULTRA SIMPLES. Comme tu raconterais a un pote qui connait RIEN au rap US.\n- Dis QUI fait QUOI. Pas de generalites.\n- Si y a des refs (Challenger, un quartier, un evenement), EXPLIQUE-LES.\n- Si y a des images poetiques, dis ce qu'elles REPRESENTENT concretement.\nEXEMPLE BON: 'Il compare sa vie d'homme noir a un astronaute qui decolle mais qui brule comme la navette Challenger. Ensuite il decrit des corps noirs brules et pendus — il fait le lien entre les lynchages et l'explosion de Challenger. Les gens bienveillants sont trop loin pour aider, comme le soleil en hiver.'\nEXEMPLE MAUVAIS: 'Un bloc d'images fortes evoquant la violence et le sacrifice.'\n\nCHAMP \"why\" (1 phrase SIMPLE):\n- Parle comme un VRAI MEC, pas comme un critique.\nEXEMPLE BON: 'En 8 lignes il connecte l'explosion de Challenger aux lynchages — personne fait ca.'\nEXEMPLE MAUVAIS: 'La juxtaposition est brutale et poignante, evoquant des themes de sacrifice.'\n- Interdit: 'puissance narrative', 'poignant', 'saisissant', 'evoquant', 'juxtaposition', 'resonance'. Parle NORMAL.\n\nSELECTION:\n- 4 a 8 passages de 4-8 barres CONSECUTIVES par album.\n- Experiences universelles: pauvrete, perte, survie, famille, rue.\n- JAMAIS de punchlines isolees ou de barres non consecutives.\n- Trie par impact decroissant.\n- TOUT en francais.";
 
-var THEMATIC_SYSTEM = "L'utilisateur cherche des passages de rap qui illustrent un THEME precis. On te donne des paroles (un ou plusieurs albums) et un theme en francais.\n\nJSON UNIQUEMENT:\n{\"results\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"track\":\"nom du morceau\",\"artist\":\"artiste\",\"album\":\"album\",\"link\":\"comment ce passage illustre le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES DE SELECTION:\n- Cherche les passages (4-8 barres CONSECUTIVES) ou le rappeur ABORDE le theme de maniere CONCRETE et IMAGEE.\n- Un passage qui MONTRE le theme a travers une scene, une image, un vecu > un passage qui le NOMME.\n- Si le rappeur dit 'la trahison ca fait mal' c'est FAIBLE. S'il raconte une scene precise de trahison, c'est FORT.\n- 3 a 5 resultats tries par pertinence decroissante.\n- pertinence: 1 a 10. 10 = le passage EST le theme, incarne parfaitement.\n\nTRADUCTION:\n- Chaque ligne a sa traduction (\"t\"). Claire, comprehensible, pas poetique.\n- Si le morceau est en francais: \"t\" = null.\n\nCHAMP \"link\":\n- UNE phrase simple qui dit comment le passage illustre le theme.\n- Exemple: 'Il raconte comment son pere est parti quand il avait 6 ans et comment ca l'a forge.'\n- PAS de jargon critique. Parle normal.\n\nTOUT en francais (link, t).";
+var THEMATIC_SYSTEM = "L'utilisateur donne un THEME. Tu dois:\n1. DECOMPOSER ce theme en 3 a 5 ANGLES complementaires ou opposes\n2. Pour CHAQUE angle, chercher des passages pertinents dans les paroles fournies\n\nJSON UNIQUEMENT:\n{\n\"theme_complet\":\"reformulation enrichie du theme en 1 phrase\",\n\"angles\":[\n{\n\"name\":\"nom court de l'angle (ex: 'Porter un masque')\",\n\"description\":\"1 phrase qui explique cet angle du theme\",\n\"passages\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"track\":\"morceau\",\"artist\":\"artiste\",\"album\":\"album\",\"link\":\"comment ca illustre cet angle, 1 phrase\",\"pertinence\":8}]\n}\n]\n}\n\nDECOMPOSITION DU THEME:\n- Trouve les FACES du concept: le pour/le contre, l'interieur/l'exterieur, celui qui agit/celui qui subit, la cause/la consequence.\n- Exemple pour 'assumer ses faiblesses': 'exposer ses vulnerabilites volontairement' / 'porter un masque pour cacher' / 'la vulnerabilite comme arme' / 'se faire exposer par quelqu'un' / 'la confession, l'aveu'\n- Exemple pour 'la trahison': 'se faire trahir par un proche' / 'trahir quelqu'un soi-meme' / 'le moment ou tu decouvres la trahison' / 'vivre apres la trahison' / 'la paranoia avant la preuve'\n- Les angles doivent etre CONCRETS et DIFFERENTS entre eux, pas des synonymes.\n\nPASSAGES:\n- 4-8 barres CONSECUTIVES du meme morceau pour chaque passage.\n- Un passage qui MONTRE le theme a travers une scene > un passage qui le NOMME.\n- 1 a 3 passages par angle. Certains angles peuvent avoir 0 passages si rien de pertinent dans les paroles — c'est OK, garde l'angle quand meme (passages vide) pour que l'utilisateur voie qu'il existe.\n- Traduction ligne par ligne: {\"o\":\"original\",\"t\":\"traduction claire\"}. Si francais: t=null.\n- pertinence: 1-10.\n\nSTYLE:\n- Noms d'angles courts et percutants (3-5 mots).\n- \"link\": 1 phrase simple, comme a un pote.\n- TOUT en francais.";
 
 var SUGGEST_SYSTEM = "On te donne un THEME et une liste d'albums que l'utilisateur a DEJA decodes. Suggere des morceaux de rap qu'il a PAS encore decodes mais qui seraient pertinents pour ce theme.\n\nJSON UNIQUEMENT:\n{\"suggestions\":[{\"artist\":\"artiste\",\"track\":\"titre du morceau\",\"album\":\"album\",\"why\":\"pourquoi ce morceau est pertinent pour le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES:\n- 5 a 10 suggestions, triees par pertinence decroissante.\n- Ne suggere PAS de morceaux qui sont dans les albums deja decodes.\n- Privilegier des morceaux ou le theme est CENTRAL, pas juste mentionne en passant.\n- Melange des classiques et des morceaux moins connus mais pertinents.\n- Privilegier le rap US et FR underground/lyrical (Ka, billy woods, Earl, MIKE, Navy Blue, Mach-Hommy, Veust, Limsa, Infinit, Jeanjass, GAL, Alpha Wann, Dinos, Lomepal, Nekfeu, Vald, etc.) mais pas exclusivement.\n- \"why\": 1 phrase simple, en francais. Dis concretement de quoi parle le morceau par rapport au theme.\n- pertinence: 1-10. 10 = le morceau EST le theme.\n- TOUT en francais.";
 
@@ -343,10 +343,10 @@ export default function App() {
       var searchPromise = callGemini(THEMATIC_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nPAROLES:\n" + allLyrics, false);
       var suggestPromise = callGemini(SUGGEST_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nALBUMS DEJA DECODES (ne pas suggerer de morceaux de ceux-la): " + decodedList, true);
 
-      var results = await searchPromise.catch(function() { return { results: [] }; });
+      var results = await searchPromise.catch(function() { return { angles: [] }; });
       var suggestions = await suggestPromise.catch(function() { return { suggestions: [] }; });
 
-      setThematicResults(results.results || []);
+      setThematicResults(results);
       setThematicSuggestions(suggestions.suggestions || []);
     } catch (e) {
       setThematicResults([]);
@@ -669,46 +669,74 @@ export default function App() {
                 {thematicLoading ? "recherche..." : "chercher"}
               </button>
 
-              {thematicResults && thematicResults.length > 0 && thematicResults.map(function(res, ri) {
-                var pertColor = res.pertinence >= 9 ? "#38bdf8" : res.pertinence >= 7 ? "#4ade80" : "#888";
-                var lines = res.lines || [];
-                var isCopied = thematicCopied === res.track;
-                return (
-                  <div key={ri} style={{ marginBottom: 28, paddingLeft: 12, borderLeft: "3px solid " + pertColor }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                      <span style={{ fontSize: 18, fontWeight: 800, color: pertColor, lineHeight: 1 }}>{res.pertinence}</span>
-                      <div>
-                        <div style={{ fontSize: 10, color: "#f0c040", letterSpacing: 1, textTransform: "uppercase" }}>{res.track}</div>
-                        <div style={{ fontSize: 9, color: "#555" }}>{res.artist}{res.album ? " — " + res.album : ""}</div>
+              {thematicResults && thematicResults.angles && thematicResults.angles.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  {thematicResults.theme_complet && (
+                    <div style={{ fontSize: 12, color: "#999", fontStyle: "italic", marginBottom: 16, paddingBottom: 10, borderBottom: "1px solid #1a1a1a" }}>
+                      {thematicResults.theme_complet}
+                    </div>
+                  )}
+                  {thematicResults.angles.map(function(angle, ai) {
+                    var hasPassages = angle.passages && angle.passages.length > 0;
+                    return (
+                      <div key={ai} style={{ marginBottom: 28 }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "#38bdf8" }}>{angle.name}</span>
+                        </div>
+                        {angle.description && <div style={{ fontSize: 10, color: "#666", marginBottom: 12 }}>{angle.description}</div>}
+                        {!hasPassages && (
+                          <div style={{ fontSize: 10, color: "#333", fontStyle: "italic", padding: "8px 0" }}>Aucun passage trouve pour cet angle dans tes albums.</div>
+                        )}
+                        {hasPassages && angle.passages.map(function(pas, pi) {
+                          var pertColor = pas.pertinence >= 9 ? "#38bdf8" : pas.pertinence >= 7 ? "#4ade80" : "#888";
+                          var lines = pas.lines || [];
+                          var isCopied = thematicCopied === (pas.track + ai + pi);
+                          return (
+                            <div key={pi} style={{ marginBottom: 18, paddingLeft: 12, borderLeft: "3px solid " + pertColor }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                                <span style={{ fontSize: 16, fontWeight: 700, color: pertColor, lineHeight: 1 }}>{pas.pertinence}</span>
+                                <div>
+                                  <div style={{ fontSize: 10, color: "#f0c040", letterSpacing: 1, textTransform: "uppercase" }}>{pas.track}</div>
+                                  <div style={{ fontSize: 9, color: "#555" }}>{pas.artist}{pas.album ? " — " + pas.album : ""}</div>
+                                </div>
+                              </div>
+                              <div style={{ background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6, padding: "12px 14px", marginBottom: 8 }}>
+                                {lines.map(function(ln, li) {
+                                  var isObj = typeof ln === "object";
+                                  return (
+                                    <div key={li} style={{ marginBottom: li < lines.length - 1 ? 8 : 0 }}>
+                                      <div style={{ fontSize: 13, color: "#e6e6e6", lineHeight: 1.5 }}>{isObj ? ln.o : ln}</div>
+                                      {isObj && ln.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", lineHeight: 1.4, marginTop: 2 }}>{ln.t}</div>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {pas.link && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.4, marginBottom: 6 }}>{pas.link}</div>}
+                              <button
+                                onClick={function() {
+                                  var text = "🎤 " + thematicQuery.toUpperCase() + " — " + angle.name + "\n\n";
+                                  lines.forEach(function(l) { var o = typeof l === "object" ? l.o : l; var t = typeof l === "object" ? l.t : null; text += o + "\n"; if (t) text += t + "\n"; text += "\n"; });
+                                  text += "🎵 " + pas.track + " — " + pas.artist;
+                                  try { navigator.clipboard.writeText(text); setThematicCopied(pas.track + ai + pi); setTimeout(function() { setThematicCopied(""); }, 2000); } catch(e) {}
+                                }}
+                                style={{
+                                  background: "transparent", border: "1px solid " + (isCopied ? "#4ade80" : "#222"),
+                                  borderRadius: 4, color: isCopied ? "#4ade80" : "#555",
+                                  fontFamily: "inherit", fontSize: 9, padding: "5px 10px",
+                                  cursor: "pointer", letterSpacing: 1, textTransform: "uppercase",
+                                }}>
+                                {isCopied ? "✓ copie" : "copier pour tiktok"}
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
-                    </div>
-                    <div style={{ background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6, padding: "12px 14px", marginBottom: 8 }}>
-                      {lines.map(function(ln, li) {
-                        var isObj = typeof ln === "object";
-                        return (
-                          <div key={li} style={{ marginBottom: li < lines.length - 1 ? 8 : 0 }}>
-                            <div style={{ fontSize: 13, color: "#e6e6e6", lineHeight: 1.5 }}>{isObj ? ln.o : ln}</div>
-                            {isObj && ln.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", lineHeight: 1.4, marginTop: 2 }}>{ln.t}</div>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {res.link && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.4, marginBottom: 8 }}>{res.link}</div>}
-                    <button
-                      onClick={function() { copyForTikTok(res); }}
-                      style={{
-                        background: "transparent", border: "1px solid " + (isCopied ? "#4ade80" : "#222"),
-                        borderRadius: 4, color: isCopied ? "#4ade80" : "#555",
-                        fontFamily: "inherit", fontSize: 9, padding: "5px 10px",
-                        cursor: "pointer", letterSpacing: 1, textTransform: "uppercase",
-                      }}>
-                      {isCopied ? "✓ copie" : "copier pour tiktok"}
-                    </button>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
 
-              {thematicResults && thematicResults.length === 0 && !thematicLoading && (
+              {thematicResults && (!thematicResults.angles || thematicResults.angles.length === 0) && !thematicLoading && (
                 <div style={{ color: "#444", fontSize: 11, textAlign: "center", padding: 20 }}>Aucun passage trouve pour ce theme dans les albums selectionnes.</div>
               )}
 
