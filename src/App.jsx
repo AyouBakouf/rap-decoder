@@ -25,7 +25,7 @@ var TRACKLIST_SYSTEM = "Tu donnes les tracklists d'albums. Reponds en JSON: {\"t
 
 var TRANSLATE_SYSTEM = "Tu es un traducteur rap. On te donne les PAROLES EXACTES d'un morceau, tu retournes la traduction française ligne par ligne en JSON.\n\nREGLE NUMERO 1, ABSOLUE: pour CHAQUE ligne tu DOIS produire un objet {\"o\":\"ligne originale\",\"t\":\"TRADUCTION FRANCAISE\",\"c\":confiance}. Le champ \"t\" doit TOUJOURS contenir la traduction française complète. Ne laisse JAMAIS \"t\" vide, null, ou identique a \"o\". Si une ligne est intraduisible, mets \"t\":\"<intraduisible>\". C'est ta seule mission: TRADUIRE.\n\nAutres regles:\n- Regroupe les lignes trop courtes qui font partie de la meme phrase en UNE seule.\n- Sections: titres generiques [Intro], [Verse 1], [Chorus], [Bridge], [Outro], [Interlude]. JAMAIS le nom d'un rappeur.\n- Inclus TOUTES les lignes (interludes, skits, outros). Coupe RIEN.\n- \"c\" = confiance 0-100. 100 = trad evidente. <70 = slang rare, ref obscure, sens incertain.\n- Si tout le morceau est en francais: \"t\":null pour chaque ligne, lang=\"francais\".\n- Contexte rap: \"bitch\"=\"meuf\" (jamais pute). \"nigga\"=ne traduis pas. \"whip\"=\"caisse\". Registre rap francais, pas francais scolaire.\n- CRUCIAL: utilise des mots SIMPLES et COURANTS. Le francais de tous les jours, pas de la litterature. Si t'hesites entre un mot simple et un mot recherche, prends TOUJOURS le simple.\n  MOTS INTERDITS dans les traductions: firmament, tumulte, redemption, resilience, ephemere, inexorable, naguere, abysses, tourmente, funeste, demeurer, oeuvrer, quete, dessein, en proie a, au sein de, jadis, faucher (pour \"tuer\" → dis \"buter/descendre\"), courroux, empreint, autrui.\n  Dis \"le ciel\" pas \"le firmament\". Dis \"rester\" pas \"demeurer\". Dis \"chercher\" pas \"quete\". Dis \"bosser\" pas \"oeuvrer\". Dis \"avant\" pas \"jadis/naguere\".\n  Le test: un ado de 16 ans qui ecoute du rap doit comprendre chaque mot de ta traduction sans dictionnaire.\n\nNotes de decryptage (champ \"notes\"):\n- \"r\"=mot/expression, \"e\"=explication courte, \"t\"=type (\"slang\"/\"ref\"/\"wordplay\"/\"sample\")\n\nFormat JSON:\n{\n\"lang\":\"anglais\",\n\"lines\":[\n{\"s\":\"[Intro]\"},\n{\"o\":\"ligne originale\",\"t\":\"traduction francaise\",\"c\":95}\n],\n\"notes\":[\n{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"ref\"}\n]\n}";
 
-var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste rap. On te donne UNE ligne d'un morceau, le contexte, et les lignes autour. La ligne peut etre en anglais ou en francais.\n\nREGLE ABSOLUE: tu reponds TOUJOURS en FRANCAIS, quelle que soit la langue de la ligne analysee. JAMAIS en anglais. Meme si le morceau est anglophone, ton analyse est en francais.\n\nSois BREF et va droit au but. Pas de paraphrase. Pas de blabla.\n\nReponds en JSON (contenu EN FRANCAIS):\n{\n\"meaning\":\"ce que l'artiste dit vraiment, 1-2 phrases max, EN FRANCAIS\",\n\"refs\":[{\"r\":\"ref\",\"e\":\"explication courte EN FRANCAIS\"}] ou [] si aucune ref notable,\n\"wordplay\":\"explication EN FRANCAIS si wordplay/double sens/multi marquant, sinon null\"\n}\n\nRegles:\n- Pas de \\\"sens litteral\\\" (evident).\n- Refs = personnes, marques, lieux, evenements, samples, argot/verlan. Si straight talk sans ref, refs=[].\n- Wordplay = double sens, calembour, homophonie, multisyllabique. Uniquement si vraiment notable.\n- TOUT le contenu de ta reponse est redige en francais, ton direct.";
+var DEEP_ANALYSIS_SYSTEM = "Tu es un SUPER-ANALYSTE de rap obsessionnel. On te donne UNE ligne d'un morceau + le contexte + les lignes autour. Tu dois SURINTREPRETER: trouve TOUTES les couches de sens, meme les plus tirees. Mieux vaut proposer une interpretation audacieuse que rater un double sens.\n\nREGLE ABSOLUE: TOUT en FRANCAIS.\n\nReponds en JSON:\n{\n\"meaning\":\"ce que l'artiste dit, 2-3 phrases\",\n\"layers\":[\"couche de sens 1\",\"couche de sens 2\"],\n\"callbacks\":[{\"ref\":\"titre du morceau/album reference\",\"line\":\"la ligne/concept reference\",\"link\":\"comment ca se connecte\"}],\n\"refs\":[{\"r\":\"ref\",\"e\":\"explication\"}],\n\"wordplay\":\"explication si present\"\n}\n\nCHAMP \"layers\" (LE PLUS IMPORTANT — SURINTERPRETE):\nTrouve CHAQUE couche de sens possible dans la ligne:\n- Le sens litteral evident\n- Le double sens (mot qui veut dire 2 choses)\n- Le sens metaphorique (l'image renvoie a quoi)\n- Le sous-texte biographique (ca fait reference a quoi dans la vie de l'artiste)\n- La lecture politique/sociale si applicable\n- Le sens qui change quand on connait le contexte de l'album\nMets TOUTES les lectures, meme celles qui sont un peu tirees. 2 a 5 couches par ligne. Une seule couche = t'as pas assez creuse.\n\nCHAMP \"callbacks\" (CONNEXIONS AVEC D'AUTRES SONS):\nCherche si cette ligne fait echo a d'AUTRES morceaux du meme artiste:\n- Meme mot/image reutilise differemment (ex: Kendrick 'Wi-Fi' dans N95 vs 6:16 in LA)\n- Theme qui revient d'un album a l'autre\n- Reponse a un ancien morceau\n- Evolution d'une position (il disait X avant, maintenant il dit Y)\n- Reference a un beef, un featuring, un event\nSi y'a un callback, c'est de L'OR — mets-le. Si t'es pas sur a 100% mais que ca semble plausible, mets-le quand meme avec une nuance dans le 'link'.\nSi aucun callback trouve: callbacks=[]\n\nCHAMP \"refs\":\nPersonnes, marques, lieux, evenements, samples, argot. Explique chaque ref.\n\nCHAMP \"wordplay\":\nDouble sens, calembour, homophonie, multi. null si rien.\n\nSTYLE: parle comme un vrai passionne de rap qui decortique un son avec son pote. Direct, enthousiaste sur les trouvailles, pas academique.";
 
 var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre). Donne son contexte, en parlant SIMPLE comme a un pote.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom\",\"year\":2020,\"producer\":\"prod\",\"themes\":[\"theme1\",\"theme2\"],\"summary\":\"2-3 phrases simples\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- summary: 2-3 phrases en francais COURANT pour dire de quoi parle vraiment le son. Comme a un pote. Pas de critique musicale pretentieuse.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info.";
 
@@ -280,8 +280,9 @@ export default function App() {
         if (curLines[i].o) contextLines.push(curLines[i].o);
       }
       var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
-      var prompt = "Morceau: \"" + sel + "\" par " + artist + albumCtx + ".\n\nContexte:\n" + contextLines.join("\n") + "\n\nLIGNE A ANALYSER: " + line.o + "\n\nTraduction actuelle: " + (line.t || line.o);
-      var r = await callGemini(DEEP_ANALYSIS_SYSTEM, prompt, false, "gemini-3.1-flash-lite");
+      var prompt = "ARTISTE: " + artist + "\nMORCEAU: \"" + sel + "\"" + albumCtx + "\n\nLignes autour:\n" + contextLines.join("\n") + "\n\nLIGNE A ANALYSER: " + line.o + "\nTraduction: " + (line.t || line.o) + "\n\nCherche les callbacks vers d'autres morceaux/albums de " + artist + ". Compare les mots, images et themes avec sa discographie.";
+      // Utilise search pour verifier les callbacks discographiques
+      var r = await callGemini(DEEP_ANALYSIS_SYSTEM, prompt, true);
       setFocusData(r);
     } catch (e) {
       setFocusData({ error: e.message });
@@ -992,21 +993,42 @@ export default function App() {
 
               {focusData && !focusData.error && (
                 <div style={{ animation: "fadeIn .2s ease" }}>
-                  {focusData.literal && (
-                    <div style={S.analysisBlock}>
-                      <div style={S.analysisLabel}>SENS LITTERAL</div>
-                      <div style={S.analysisText}>{focusData.literal}</div>
-                    </div>
-                  )}
                   {focusData.meaning && (
                     <div style={S.analysisBlock}>
-                      <div style={S.analysisLabel}>CE QU'IL DIT VRAIMENT</div>
+                      <div style={S.analysisLabel}>CE QU'IL DIT</div>
                       <div style={S.analysisText}>{focusData.meaning}</div>
+                    </div>
+                  )}
+                  {focusData.layers && focusData.layers.length > 0 && (
+                    <div style={S.analysisBlock}>
+                      <div style={Object.assign({}, S.analysisLabel, { color: "#a855f7" })}>COUCHES DE SENS</div>
+                      {focusData.layers.map(function(layer, i) {
+                        return (
+                          <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "flex-start" }}>
+                            <span style={{ fontSize: 9, color: "#a855f7", fontWeight: 700, marginTop: 2, flexShrink: 0 }}>{i + 1}.</span>
+                            <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{layer}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {focusData.callbacks && focusData.callbacks.length > 0 && (
+                    <div style={S.analysisBlock}>
+                      <div style={Object.assign({}, S.analysisLabel, { color: "#f0c040" })}>↩ CALLBACKS</div>
+                      {focusData.callbacks.map(function(cb, i) {
+                        return (
+                          <div key={i} style={{ marginBottom: 10, paddingLeft: 8, borderLeft: "2px solid #f0c040" }}>
+                            <div style={{ fontSize: 11, color: "#f0c040", fontWeight: 600 }}>{cb.ref}</div>
+                            {cb.line && <div style={{ fontSize: 10, color: "#777", fontStyle: "italic", marginTop: 2 }}>"{cb.line}"</div>}
+                            <div style={{ fontSize: 10, color: "#999", marginTop: 3, lineHeight: 1.4 }}>{cb.link}</div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   {focusData.wordplay && (
                     <div style={S.analysisBlock}>
-                      <div style={Object.assign({}, S.analysisLabel, { color: "#a855f7" })}>WORDPLAY</div>
+                      <div style={Object.assign({}, S.analysisLabel, { color: "#38bdf8" })}>WORDPLAY</div>
                       <div style={S.analysisText}>{focusData.wordplay}</div>
                     </div>
                   )}
@@ -1023,11 +1045,6 @@ export default function App() {
                       })}
                     </div>
                   )}
-                  {focusData.technique && (
-                    <div style={S.analysisBlock}>
-                      <div style={Object.assign({}, S.analysisLabel, { color: "#4ade80" })}>TECHNIQUE</div>
-                      <div style={S.analysisText}>{focusData.technique}</div>
-                    </div>
                   )}
                 </div>
               )}
