@@ -474,7 +474,7 @@ export default function App() {
       var r = await callDeepSeek(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES:\n" + allLyrics);
       setVideoResults(r);
     } catch (e) {
-      setVideoResults({ plan: [], suggestions: [], connexions: [] });
+      setVideoResults({ plan: [], suggestions: [], connexions: [], error: e.message });
     }
     setVideoLoading(false);
   };
@@ -726,6 +726,11 @@ export default function App() {
 
               {videoResults && (
                 <div>
+                  {videoResults.error && (
+                    <div style={{ padding: "12px", background: "#1a0a0a", border: "1px solid #2a1010", borderRadius: 6, marginBottom: 16, fontSize: 12, color: "#e05030" }}>
+                      Erreur: {videoResults.error}
+                    </div>
+                  )}
                   {videoResults.argument_resume && (
                     <div style={{ fontSize: 12, color: "#c084fc", fontStyle: "italic", marginBottom: 20, padding: "12px", background: "#0d0a10", border: "1px solid #1a1020", borderRadius: 6, lineHeight: 1.6 }}>
                       {videoResults.argument_resume}
