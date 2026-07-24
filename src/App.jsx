@@ -63,6 +63,27 @@ async function callGemini(system, message, search, model, _retries) {
   return JSON.parse(m[0]);
 }
 
+// DeepSeek R1 via OpenRouter — pour les taches de raisonnement complexe (Video Research)
+async function callDeepSeek(system, message, _retries) {
+  if (_retries === undefined) _retries = 0;
+  var res = await fetch("/api/openrouter", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ system: system, message: message }),
+  });
+  var data = await res.json();
+  if (data.rateLimited && _retries < 3) {
+    var wait = Math.min((data.retryAfter || 30) + 5, 60);
+    await new Promise(function(r) { setTimeout(r, wait * 1000); });
+    return callDeepSeek(system, message, _retries + 1);
+  }
+  if (data.error) throw new Error(data.error);
+  var text = data.text || "";
+  var m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error("Pas de JSON dans la reponse DeepSeek");
+  return JSON.parse(m[0]);
+}
+
 async function fetchLyrics(title, artist, album) {
   var res = await fetch("/api/genius", {
     method: "POST",
@@ -349,7 +370,7 @@ export default function App() {
 
       // 2 appels en parallele
       var searchPromise = callGemini(THEMATIC_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nPAROLES:\n" + allLyrics, false);
-      var suggestPromise = callGemini(SUGGEST_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nALBUMS DEJA DECODES (ne pas suggerer de morceaux de ceux-la): " + decodedList, true);
+      var suggestPromise = callDeepSeek(SUGGEST_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nALBUMS DEJA DECODES (ne pas suggerer de morceaux de ceux-la): " + decodedList);
 
       var results = await searchPromise.catch(function() { return { angles: [] }; });
       var suggestions = await suggestPromise.catch(function() { return { suggestions: [] }; });
@@ -450,7 +471,7 @@ export default function App() {
           }
         });
       });
-      var r = await callGemini(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES:\n" + allLyrics, true);
+      var r = await callDeepSeek(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES:\n" + allLyrics);
       setVideoResults(r);
     } catch (e) {
       setVideoResults({ plan: [], suggestions: [], connexions: [] });
