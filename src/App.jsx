@@ -33,6 +33,8 @@ var BEST_BARS_SYSTEM = "Tu es un amoureux de rap qui cherche les MOMENTS qui tou
 
 var THEMATIC_SYSTEM = "L'utilisateur cherche des passages de rap qui illustrent un THEME precis. On te donne des paroles (un ou plusieurs albums) et un theme en francais.\n\nJSON UNIQUEMENT:\n{\"results\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"track\":\"nom du morceau\",\"artist\":\"artiste\",\"album\":\"album\",\"link\":\"comment ce passage illustre le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES DE SELECTION:\n- Cherche les passages (4-8 barres CONSECUTIVES) ou le rappeur ABORDE le theme de maniere CONCRETE et IMAGEE.\n- Un passage qui MONTRE le theme a travers une scene, une image, un vecu > un passage qui le NOMME.\n- Si le rappeur dit 'la trahison ca fait mal' c'est FAIBLE. S'il raconte une scene precise de trahison, c'est FORT.\n- 3 a 5 resultats tries par pertinence decroissante.\n- pertinence: 1 a 10. 10 = le passage EST le theme, incarne parfaitement.\n\nTRADUCTION:\n- Chaque ligne a sa traduction (\"t\"). Claire, comprehensible, pas poetique.\n- Si le morceau est en francais: \"t\" = null.\n\nCHAMP \"link\":\n- UNE phrase simple qui dit comment le passage illustre le theme.\n- Exemple: 'Il raconte comment son pere est parti quand il avait 6 ans et comment ca l'a forge.'\n- PAS de jargon critique. Parle normal.\n\nTOUT en francais (link, t).";
 
+var SUGGEST_SYSTEM = "On te donne un THEME et une liste d'albums que l'utilisateur a DEJA decodes. Suggere des morceaux de rap qu'il a PAS encore decodes mais qui seraient pertinents pour ce theme.\n\nJSON UNIQUEMENT:\n{\"suggestions\":[{\"artist\":\"artiste\",\"track\":\"titre du morceau\",\"album\":\"album\",\"why\":\"pourquoi ce morceau est pertinent pour le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES:\n- 5 a 10 suggestions, triees par pertinence decroissante.\n- Ne suggere PAS de morceaux qui sont dans les albums deja decodes.\n- Privilegier des morceaux ou le theme est CENTRAL, pas juste mentionne en passant.\n- Melange des classiques et des morceaux moins connus mais pertinents.\n- Privilegier le rap US et FR underground/lyrical (Ka, billy woods, Earl, MIKE, Navy Blue, Mach-Hommy, Veust, Limsa, Infinit, Jeanjass, GAL, Alpha Wann, Dinos, Lomepal, Nekfeu, Vald, etc.) mais pas exclusivement.\n- \"why\": 1 phrase simple, en francais. Dis concretement de quoi parle le morceau par rapport au theme.\n- pertinence: 1-10. 10 = le morceau EST le theme.\n- TOUT en francais.";
+
 var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur, creuse:\n- \"essentiel\": 2 a 4 lignes. Le cream (meilleures punchlines/images/multis selon le style).\n- \"notable\": 3 a 6 lignes de qualite.\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais. \"why\": nomme CE QUI est bien ecrit (le wordplay? le multi? la chute? le detail?), langage simple.\n- types: \"craft\" (technique/structure) / \"real\" (vecu) / \"depth\" (double sens) / \"subversion\" (chute inattendue, punchline)\n- Rap FR: privilegie les vraies punchlines et les jeux de mots. Rap anglophone: l'understatement qui devaste compte autant que la punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment, surtout sur plusieurs lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes)\n- \"rhymed\": pour CHAQUE ligne, la portion EXACTE qui porte la rime multi (sous-chaine exacte de la ligne)\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\nSi pas de vrais multis, multis=[]. N'invente pas.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note, note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. TOUJOURS en francais, MEME pour un morceau anglophone (seul le champ \"o\" garde la langue originale, et \"t\" la traduction). Phrases bien construites, pas de tournures bizarres.";
 
 async function callGemini(system, message, search, model, _retries) {
@@ -97,6 +99,8 @@ export default function App() {
   var _tl = useState(false), thematicLoading = _tl[0], setThematicLoading = _tl[1];
   var _ts = useState([]), thematicSelected = _ts[0], setThematicSelected = _ts[1];
   var _tc = useState(""), thematicCopied = _tc[0], setThematicCopied = _tc[1];
+  var _tsu = useState(null), thematicSuggestions = _tsu[0], setThematicSuggestions = _tsu[1];
+  var _tsd = useState({}), suggestDecoding = _tsd[0], setSuggestDecoding = _tsd[1];
   var stopRef = useRef(false);
   var dRef = useRef({});
   var isMobile = window.innerWidth <= 700;
@@ -261,7 +265,7 @@ export default function App() {
     stopRef.current = true; setView("input"); setTracks([]); setData({});
     dRef.current = {}; setSel(null); setAuto(false); setDone(0);
     setBestBars(null); setBestBarsView(false);
-    setThematicView(false); setThematicResults(null);
+    setThematicView(false); setThematicResults(null); setThematicSuggestions(null); setSuggestDecoding({});
     sessionClear();
   };
 
@@ -308,12 +312,14 @@ export default function App() {
     return albums;
   };
 
-  // Recherche thematique
+  // Recherche thematique (2 appels paralleles: resultats + suggestions)
   var runThematicSearch = async function() {
     if (!thematicQuery.trim() || thematicSelected.length === 0) return;
     setThematicLoading(true);
     setThematicResults(null);
+    setThematicSuggestions(null);
     try {
+      // Construire les paroles
       var allLyrics = "";
       thematicSelected.forEach(function(alb) {
         allLyrics += "\n\n======= " + alb.artist + " - " + alb.album + " =======\n";
@@ -328,12 +334,62 @@ export default function App() {
           }
         });
       });
-      var r = await callGemini(THEMATIC_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nPAROLES:\n" + allLyrics, false);
-      setThematicResults(r.results || []);
+
+      // Liste des albums deja decodes (pour que les suggestions les evitent)
+      var decodedList = thematicSelected.map(function(a) { return a.artist + " - " + a.album; }).join(", ");
+
+      // 2 appels en parallele
+      var searchPromise = callGemini(THEMATIC_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nPAROLES:\n" + allLyrics, false);
+      var suggestPromise = callGemini(SUGGEST_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nALBUMS DEJA DECODES (ne pas suggerer de morceaux de ceux-la): " + decodedList, true);
+
+      var results = await searchPromise.catch(function() { return { results: [] }; });
+      var suggestions = await suggestPromise.catch(function() { return { suggestions: [] }; });
+
+      setThematicResults(results.results || []);
+      setThematicSuggestions(suggestions.suggestions || []);
     } catch (e) {
       setThematicResults([]);
+      setThematicSuggestions([]);
     }
     setThematicLoading(false);
+  };
+
+  // Decoder un morceau suggere (artiste/titre differents de l'album courant)
+  var decodeSuggestion = async function(sug) {
+    var key = sug.artist + ":" + sug.track;
+    setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "load"; return n; });
+    try {
+      // Chercher les paroles via genius
+      var genius = await fetchLyrics(sug.track, sug.artist, sug.album || "");
+      if (genius.found && genius.lyrics) {
+        var prompt = "Voici les paroles EXACTES de \"" + sug.track + "\" par " + sug.artist + ".\nCopie chaque ligne originale mot pour mot.\n\nPAROLES:\n\n" + genius.lyrics;
+        var r = await callGemini(TRANSLATE_SYSTEM, prompt, false);
+        r.found = true;
+        r._source = genius.source;
+        if (r.lines && r.lines.length) cacheSet(sug.artist, sug.track, { d: r });
+        // Aussi cacher une mini-tracklist pour que l'album apparaisse dans la recherche
+        var existingTl = tlGet(sug.artist, sug.album || sug.track) || [];
+        if (existingTl.indexOf(sug.track) < 0) {
+          existingTl.push(sug.track);
+          tlSet(sug.artist, sug.album || sug.track, existingTl);
+        }
+        setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "ok"; return n; });
+      } else {
+        // Fallback: essayer via Gemini search
+        var FALLBACK = "Tu es un traducteur rap. Utilise web_search pour trouver les paroles EXACTES de ce morceau. Puis traduis ligne par ligne.\nReponds en JSON: {\"found\":true,\"lang\":\"anglais\",\"lines\":[{\"s\":\"[Verse 1]\"},{\"o\":\"ligne\",\"t\":\"traduction\",\"c\":80}],\"notes\":[]}\nSi introuvable: {\"found\":false,\"lines\":[],\"notes\":[]}";
+        var r2 = await callGemini(FALLBACK, "Trouve et traduis: \"" + sug.track + "\" par " + sug.artist, true);
+        if (r2.found && r2.lines && r2.lines.length) {
+          cacheSet(sug.artist, sug.track, { d: r2 });
+          var existingTl2 = tlGet(sug.artist, sug.album || sug.track) || [];
+          if (existingTl2.indexOf(sug.track) < 0) { existingTl2.push(sug.track); tlSet(sug.artist, sug.album || sug.track, existingTl2); }
+          setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "ok"; return n; });
+        } else {
+          setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
+        }
+      }
+    } catch (e) {
+      setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
+    }
   };
 
   // Copier pour TikTok
@@ -653,6 +709,52 @@ export default function App() {
 
               {thematicResults && thematicResults.length === 0 && !thematicLoading && (
                 <div style={{ color: "#444", fontSize: 11, textAlign: "center", padding: 20 }}>Aucun passage trouve pour ce theme dans les albums selectionnes.</div>
+              )}
+
+              {thematicSuggestions && thematicSuggestions.length > 0 && (
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: 9, color: "#f0c040", letterSpacing: 3, textTransform: "uppercase", marginBottom: 12, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>suggestions — morceaux pas encore decodes</div>
+                  {thematicSuggestions.map(function(sug, si) {
+                    var key = sug.artist + ":" + sug.track;
+                    var status = suggestDecoding[key] || null;
+                    var pertColor = sug.pertinence >= 9 ? "#f0c040" : sug.pertinence >= 7 ? "#888" : "#555";
+                    return (
+                      <div key={si} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 14, padding: "10px 12px", background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 6 }}>
+                        <span style={{ fontSize: 16, fontWeight: 700, color: pertColor, minWidth: 22, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>{sug.pertinence}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: "#ddd" }}>{sug.track}</div>
+                          <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{sug.artist}{sug.album ? " — " + sug.album : ""}</div>
+                          {sug.why && <div style={{ fontSize: 10, color: "#888", marginTop: 4, lineHeight: 1.4 }}>{sug.why}</div>}
+                        </div>
+                        <button
+                          onClick={function() { if (status !== "load") decodeSuggestion(sug); }}
+                          disabled={status === "load" || status === "ok"}
+                          style={{
+                            background: "transparent", flexShrink: 0,
+                            border: "1px solid " + (status === "ok" ? "#4ade80" : status === "err" ? "#e05030" : status === "load" ? "#333" : "#222"),
+                            borderRadius: 4,
+                            color: status === "ok" ? "#4ade80" : status === "err" ? "#e05030" : status === "load" ? "#555" : "#f0c040",
+                            fontFamily: "inherit", fontSize: 9, padding: "5px 8px",
+                            cursor: status === "load" || status === "ok" ? "default" : "pointer",
+                            letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap",
+                          }}>
+                          {status === "ok" ? "✓ decode" : status === "load" ? "..." : status === "err" ? "✕ erreur" : "decoder"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {Object.values(suggestDecoding).some(function(v) { return v === "ok"; }) && (
+                    <button onClick={runThematicSearch} style={{
+                      width: "100%", padding: "10px 0", marginTop: 8,
+                      background: "#0d1520", color: "#38bdf8",
+                      border: "1px solid #1a3050", borderRadius: 4,
+                      fontFamily: "inherit", fontSize: 10, cursor: "pointer",
+                      letterSpacing: 2, textTransform: "uppercase",
+                    }}>
+                      ↻ relancer la recherche (inclure les nouveaux)
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )}
