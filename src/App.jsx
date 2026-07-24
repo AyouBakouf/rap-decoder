@@ -35,6 +35,8 @@ var THEMATIC_SYSTEM = "L'utilisateur donne un THEME. Tu dois:\n1. DECOMPOSER ce 
 
 var SUGGEST_SYSTEM = "On te donne un THEME et une liste d'albums que l'utilisateur a DEJA decodes. Suggere des morceaux de rap qu'il a PAS encore decodes mais qui seraient pertinents pour ce theme.\n\nJSON UNIQUEMENT:\n{\"suggestions\":[{\"artist\":\"artiste\",\"track\":\"titre du morceau\",\"album\":\"album\",\"why\":\"pourquoi ce morceau est pertinent pour le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES:\n- 5 a 10 suggestions, triees par pertinence decroissante.\n- Ne suggere PAS de morceaux qui sont dans les albums deja decodes.\n- Privilegier des morceaux ou le theme est CENTRAL, pas juste mentionne en passant.\n- Melange des classiques et des morceaux moins connus mais pertinents.\n- Privilegier le rap US et FR underground/lyrical (Ka, billy woods, Earl, MIKE, Navy Blue, Mach-Hommy, Veust, Limsa, Infinit, Jeanjass, GAL, Alpha Wann, Dinos, Lomepal, Nekfeu, Vald, etc.) mais pas exclusivement.\n- \"why\": 1 phrase simple, en francais. Dis concretement de quoi parle le morceau par rapport au theme.\n- pertinence: 1-10. 10 = le morceau EST le theme.\n- TOUT en francais.";
 
+var VIDRESEARCH_SYSTEM = "L'utilisateur prepare une VIDEO sur le rap. Il decrit pas un theme vague mais un ARGUMENT PRECIS — le concept de sa video avec les artistes, morceaux, connexions qu'il veut faire.\n\nTu dois l'aider a trouver les extraits exacts et structurer sa video.\n\nJSON UNIQUEMENT:\n{\n\"argument_resume\":\"reformulation claire de l'argument en 2-3 phrases\",\n\"plan\":[\n{\"etape\":1,\"role\":\"ouverture / developpement / pivot / conclusion\",\"description\":\"ce que cette partie de la video doit montrer\",\"extrait\":{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction\"}],\"track\":\"morceau\",\"artist\":\"artiste\",\"album\":\"album\"},\"pourquoi\":\"pourquoi cet extrait a cette place dans l'argument\"}\n],\n\"suggestions\":[{\"artist\":\"artiste\",\"track\":\"morceau\",\"album\":\"album\",\"why\":\"en quoi ce morceau sert l'argument precis, 1 phrase\",\"role\":\"ou il irait dans la video\"}],\n\"connexions\":[{\"de\":\"morceau/moment A\",\"vers\":\"morceau/moment B\",\"lien\":\"le fil logique entre les deux\"}]\n}\n\nCHAMP \"plan\" (LE PLUS IMPORTANT):\n- C'est la STRUCTURE DE LA VIDEO dans l'ordre narratif.\n- Chaque etape a un role clair: 'ouverture' (poser le sujet), 'developpement' (construire l'argument), 'pivot' (le retournement ou la connexion surprise), 'conclusion' (la chute).\n- L'extrait de chaque etape est le passage exact (4-8 barres) qui illustre CE moment de l'argument.\n- Si un extrait pertinent est pas dans les paroles fournies mais que tu le connais, mets-le dans suggestions au lieu de l'inventer.\n- 3 a 6 etapes. Pas trop long.\n\nCHAMP \"suggestions\":\n- Morceaux PAS dans les paroles fournies mais DIRECTEMENT lies a l'argument (pas juste thematiquement proches).\n- \"role\": ou ce morceau irait dans la structure de la video.\n- 3 a 6 suggestions max.\n\nCHAMP \"connexions\":\n- Les FILS LOGIQUES entre les extraits. Les callbacks, les echos, les reponses d'un artiste a l'autre.\n- Ex: 'Kendrick dit X sur Mr. Morale → Drake essaie d'utiliser ca sur Push Ups → mais ca marche pas PARCE QUE Kendrick l'avait deja dit lui-meme → parallele avec B-Rabbit dans 8 Mile'\n- C'est le CIMENT de la video. 2 a 4 connexions.\n\nSTYLE:\n- Parle comme un pote qui t'aide a structurer ta video.\n- Pas de jargon critique. Direct et concret.\n- TOUT en francais.";
+
 var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur, creuse:\n- \"essentiel\": 2 a 4 lignes. Le cream (meilleures punchlines/images/multis selon le style).\n- \"notable\": 3 a 6 lignes de qualite.\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais. \"why\": nomme CE QUI est bien ecrit (le wordplay? le multi? la chute? le detail?), langage simple.\n- types: \"craft\" (technique/structure) / \"real\" (vecu) / \"depth\" (double sens) / \"subversion\" (chute inattendue, punchline)\n- Rap FR: privilegie les vraies punchlines et les jeux de mots. Rap anglophone: l'understatement qui devaste compte autant que la punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment, surtout sur plusieurs lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes)\n- \"rhymed\": pour CHAQUE ligne, la portion EXACTE qui porte la rime multi (sous-chaine exacte de la ligne)\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\nSi pas de vrais multis, multis=[]. N'invente pas.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note, note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. TOUJOURS en francais, MEME pour un morceau anglophone (seul le champ \"o\" garde la langue originale, et \"t\" la traduction). Phrases bien construites, pas de tournures bizarres.";
 
 async function callGemini(system, message, search, model, _retries) {
@@ -101,6 +103,11 @@ export default function App() {
   var _tc = useState(""), thematicCopied = _tc[0], setThematicCopied = _tc[1];
   var _tsu = useState(null), thematicSuggestions = _tsu[0], setThematicSuggestions = _tsu[1];
   var _tsd = useState({}), suggestDecoding = _tsd[0], setSuggestDecoding = _tsd[1];
+  var _vv = useState(false), videoView = _vv[0], setVideoView = _vv[1];
+  var _vq = useState(""), videoBrief = _vq[0], setVideoBrief = _vq[1];
+  var _vr = useState(null), videoResults = _vr[0], setVideoResults = _vr[1];
+  var _vl = useState(false), videoLoading = _vl[0], setVideoLoading = _vl[1];
+  var _vsd = useState({}), videoSugDecoding = _vsd[0], setVideoSugDecoding = _vsd[1];
   var stopRef = useRef(false);
   var dRef = useRef({});
   var isMobile = window.innerWidth <= 700;
@@ -266,6 +273,7 @@ export default function App() {
     dRef.current = {}; setSel(null); setAuto(false); setDone(0);
     setBestBars(null); setBestBarsView(false);
     setThematicView(false); setThematicResults(null); setThematicSuggestions(null); setSuggestDecoding({});
+    setVideoView(false); setVideoResults(null); setVideoSugDecoding({});
     sessionClear();
   };
 
@@ -413,6 +421,64 @@ export default function App() {
 
   var closeFocus = function() { setFocusLine(null); setFocusData(null); };
 
+  // Video Research
+  var runVideoResearch = async function() {
+    if (!videoBrief.trim()) return;
+    setVideoLoading(true);
+    setVideoResults(null);
+    try {
+      // Collecter toutes les paroles decodees (tous les albums en cache)
+      var allLyrics = "";
+      var decodedList = [];
+      var albums = getCachedAlbums();
+      // Ajouter l'album courant si pas dans la liste
+      if (mode === "album" && artist && album && done > 0) {
+        var exists = albums.some(function(a) { return norm(a.artist) === norm(artist) && norm(a.album) === norm(album); });
+        if (!exists) albums.unshift({ artist: artist, album: album, tracks: tracks, decoded: done });
+      }
+      albums.forEach(function(alb) {
+        decodedList.push(alb.artist + " - " + alb.album);
+        allLyrics += "\n\n======= " + alb.artist + " - " + alb.album + " =======\n";
+        alb.tracks.forEach(function(t) {
+          var c = cacheGet(alb.artist, t);
+          if (c && c.d && c.d.lines) {
+            allLyrics += "\n--- " + t + " ---\n";
+            c.d.lines.forEach(function(l) {
+              if (l.s) allLyrics += "\n" + l.s + "\n";
+              else if (l.o) allLyrics += l.o + "\n";
+            });
+          }
+        });
+      });
+      var r = await callGemini(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES:\n" + allLyrics, true);
+      setVideoResults(r);
+    } catch (e) {
+      setVideoResults({ plan: [], suggestions: [], connexions: [] });
+    }
+    setVideoLoading(false);
+  };
+
+  var decodeVideoSuggestion = async function(sug) {
+    var key = sug.artist + ":" + sug.track;
+    setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "load"; return n; });
+    try {
+      var genius = await fetchLyrics(sug.track, sug.artist, sug.album || "");
+      if (genius.found && genius.lyrics) {
+        var prompt = "Voici les paroles EXACTES de \"" + sug.track + "\" par " + sug.artist + ".\nCopie chaque ligne originale mot pour mot.\n\nPAROLES:\n\n" + genius.lyrics;
+        var r = await callGemini(TRANSLATE_SYSTEM, prompt, false);
+        r.found = true;
+        if (r.lines && r.lines.length) cacheSet(sug.artist, sug.track, { d: r });
+        var existingTl = tlGet(sug.artist, sug.album || sug.track) || [];
+        if (existingTl.indexOf(sug.track) < 0) { existingTl.push(sug.track); tlSet(sug.artist, sug.album || sug.track, existingTl); }
+        setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "ok"; return n; });
+      } else {
+        setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
+      }
+    } catch (e) {
+      setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
+    }
+  };
+
   // Best Bars: envoie TOUTES les paroles de l'album en un seul appel
   var extractBestBars = async function() {
     setBestBarsView(true);
@@ -488,8 +554,8 @@ export default function App() {
 
   var cur = sel && data[sel];
   var curD = cur ? cur.d : null;
-  var showSidebar = !isMobile || (!sel && !albumPlView && !bestBarsView && !thematicView);
-  var showDetail = !isMobile || sel || albumPlView || bestBarsView || thematicView;
+  var showSidebar = !isMobile || (!sel && !albumPlView && !bestBarsView && !thematicView && !videoView);
+  var showDetail = !isMobile || sel || albumPlView || bestBarsView || thematicView || videoView;
   var headerLabel = mode === "single" ? single : album;
 
   return (
@@ -565,21 +631,30 @@ export default function App() {
                   ★ best bars
                 </button>
               )}
-              <button onClick={function() { setThematicView(true); setAlbumPlView(false); setBestBarsView(false); setSel(null); }} style={{
+              <button onClick={function() { setThematicView(true); setAlbumPlView(false); setBestBarsView(false); setVideoView(false); setSel(null); }} style={{
                 background: "transparent", border: "1px solid #1a1a2a", borderRadius: 4,
                 color: "#38bdf8", fontFamily: "inherit", fontSize: 9,
                 padding: "5px 10px", cursor: "pointer",
                 letterSpacing: 2, textTransform: "uppercase",
-                margin: "0 12px 10px", display: "block",
+                margin: "0 12px 5px", display: "block",
               }}>
                 ◈ recherche thematique
+              </button>
+              <button onClick={function() { setVideoView(true); setThematicView(false); setAlbumPlView(false); setBestBarsView(false); setSel(null); }} style={{
+                background: "transparent", border: "1px solid #2a1a2a", borderRadius: 4,
+                color: "#c084fc", fontFamily: "inherit", fontSize: 9,
+                padding: "5px 10px", cursor: "pointer",
+                letterSpacing: 2, textTransform: "uppercase",
+                margin: "0 12px 10px", display: "block",
+              }}>
+                ▶ video research
               </button>
               {tracks.map(function(t, i) {
                 var st = (data[t] && data[t].st) || "idle";
                 var isSel = sel === t;
                 var colors = { idle: "#222", load: "#f0c040", ok: "#4ade80", err: "#ef4444" };
                 return (
-                  <div key={i} onClick={function() { setAlbumPlView(false); setBestBarsView(false); setThematicView(false); decode(t, false); }} style={Object.assign({}, S.trackRow, {
+                  <div key={i} onClick={function() { setAlbumPlView(false); setBestBarsView(false); setThematicView(false); setVideoView(false); decode(t, false); }} style={Object.assign({}, S.trackRow, {
                     background: isSel ? "#131313" : "transparent",
                     borderLeft: isSel ? "2px solid #f0c040" : "2px solid transparent",
                   })}>
@@ -596,7 +671,153 @@ export default function App() {
             </div>
           )}
 
-          {showDetail && thematicView && (
+          {showDetail && videoView && (
+            <div style={S.detail}>
+              <button onClick={function() { setVideoView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <div style={S.trackTitle}>▶ Video Research</div>
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Decris ton argument de video — on trouve les extraits et on structure</div>
+
+              <textarea
+                value={videoBrief}
+                onChange={function(e) { setVideoBrief(e.target.value); }}
+                placeholder={"Decris ta video...\n\nEx: Je veux montrer que Kendrick s'expose volontairement sur Mr. Morale pour que ses faiblesses soient inutilisables dans le beef avec Drake, comme B-Rabbit dans 8 Mile qui assume tout avant que Papa Doc puisse l'attaquer"}
+                style={{
+                  width: "100%", minHeight: 120, padding: "12px", background: "#0a0a0a",
+                  color: "#ddd", border: "1px solid #222", borderRadius: 6,
+                  fontFamily: "inherit", fontSize: 12, lineHeight: 1.6, outline: "none",
+                  boxSizing: "border-box", resize: "vertical",
+                }}
+              />
+
+              <button
+                onClick={runVideoResearch}
+                disabled={videoLoading || !videoBrief.trim()}
+                style={{
+                  width: "100%", padding: "12px 0", marginTop: 10,
+                  background: videoLoading || !videoBrief.trim() ? "#111" : "#1a1020",
+                  color: videoLoading ? "#555" : "#c084fc",
+                  border: "1px solid #2a1a3a", borderRadius: 4,
+                  fontFamily: "inherit", fontSize: 11, cursor: "pointer",
+                  letterSpacing: 3, textTransform: "uppercase", marginBottom: 20,
+                }}>
+                {videoLoading ? "recherche..." : "rechercher"}
+              </button>
+
+              {videoResults && (
+                <div>
+                  {videoResults.argument_resume && (
+                    <div style={{ fontSize: 12, color: "#c084fc", fontStyle: "italic", marginBottom: 20, padding: "12px", background: "#0d0a10", border: "1px solid #1a1020", borderRadius: 6, lineHeight: 1.6 }}>
+                      {videoResults.argument_resume}
+                    </div>
+                  )}
+
+                  {videoResults.plan && videoResults.plan.length > 0 && (
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{ fontSize: 9, color: "#c084fc", letterSpacing: 3, textTransform: "uppercase", marginBottom: 14, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>plan de la video</div>
+                      {videoResults.plan.map(function(step, si) {
+                        var roleColors = { ouverture: "#38bdf8", developpement: "#4ade80", pivot: "#f0c040", conclusion: "#e05030" };
+                        var rc = roleColors[step.role] || "#888";
+                        var lines = (step.extrait && step.extrait.lines) || [];
+                        return (
+                          <div key={si} style={{ marginBottom: 24, paddingLeft: 12, borderLeft: "3px solid " + rc }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                              <span style={{ fontSize: 18, fontWeight: 800, color: rc, lineHeight: 1 }}>{step.etape}</span>
+                              <span style={{ fontSize: 8, color: rc, border: "1px solid " + rc, padding: "2px 8px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 2 }}>{step.role}</span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "#bbb", marginBottom: 8, lineHeight: 1.5 }}>{step.description}</div>
+                            {step.extrait && step.extrait.track && (
+                              <div style={{ fontSize: 9, color: "#f0c040", letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+                                {step.extrait.track}{step.extrait.artist ? " — " + step.extrait.artist : ""}
+                              </div>
+                            )}
+                            {lines.length > 0 && (
+                              <div style={{ background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6, padding: "12px 14px", marginBottom: 8 }}>
+                                {lines.map(function(ln, li) {
+                                  var isObj = typeof ln === "object";
+                                  return (
+                                    <div key={li} style={{ marginBottom: li < lines.length - 1 ? 8 : 0 }}>
+                                      <div style={{ fontSize: 13, color: "#e6e6e6", lineHeight: 1.5 }}>{isObj ? ln.o : ln}</div>
+                                      {isObj && ln.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", marginTop: 2 }}>{ln.t}</div>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {step.pourquoi && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{step.pourquoi}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {videoResults.connexions && videoResults.connexions.length > 0 && (
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{ fontSize: 9, color: "#f0c040", letterSpacing: 3, textTransform: "uppercase", marginBottom: 12, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>connexions</div>
+                      {videoResults.connexions.map(function(cx, ci) {
+                        return (
+                          <div key={ci} style={{ marginBottom: 12, padding: "10px 12px", background: "#0d0a08", border: "1px solid #1a1810", borderRadius: 6 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                              <span style={{ fontSize: 11, color: "#f0c040", fontWeight: 600 }}>{cx.de}</span>
+                              <span style={{ fontSize: 10, color: "#333" }}>→</span>
+                              <span style={{ fontSize: 11, color: "#f0c040", fontWeight: 600 }}>{cx.vers}</span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "#999", lineHeight: 1.4 }}>{cx.lien}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {videoResults.suggestions && videoResults.suggestions.length > 0 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 9, color: "#c084fc", letterSpacing: 3, textTransform: "uppercase", marginBottom: 12, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>morceaux a decoder</div>
+                      {videoResults.suggestions.map(function(sug, si) {
+                        var key = sug.artist + ":" + sug.track;
+                        var status = videoSugDecoding[key] || null;
+                        return (
+                          <div key={si} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10, padding: "10px 12px", background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 6 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, color: "#ddd" }}>{sug.track}</div>
+                              <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{sug.artist}{sug.album ? " — " + sug.album : ""}</div>
+                              {sug.why && <div style={{ fontSize: 10, color: "#888", marginTop: 3 }}>{sug.why}</div>}
+                              {sug.role && <div style={{ fontSize: 9, color: "#c084fc", marginTop: 3 }}>→ {sug.role}</div>}
+                            </div>
+                            <button
+                              onClick={function() { if (status !== "load") decodeVideoSuggestion(sug); }}
+                              disabled={status === "load" || status === "ok"}
+                              style={{
+                                background: "transparent", flexShrink: 0,
+                                border: "1px solid " + (status === "ok" ? "#4ade80" : status === "err" ? "#e05030" : "#222"),
+                                borderRadius: 4,
+                                color: status === "ok" ? "#4ade80" : status === "err" ? "#e05030" : status === "load" ? "#555" : "#c084fc",
+                                fontFamily: "inherit", fontSize: 9, padding: "5px 8px",
+                                cursor: status === "load" || status === "ok" ? "default" : "pointer",
+                                letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap",
+                              }}>
+                              {status === "ok" ? "✓ decode" : status === "load" ? "..." : status === "err" ? "✕ erreur" : "decoder"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {Object.values(videoSugDecoding).some(function(v) { return v === "ok"; }) && (
+                        <button onClick={runVideoResearch} style={{
+                          width: "100%", padding: "10px 0", marginTop: 8,
+                          background: "#0d0a10", color: "#c084fc",
+                          border: "1px solid #2a1a3a", borderRadius: 4,
+                          fontFamily: "inherit", fontSize: 10, cursor: "pointer",
+                          letterSpacing: 2, textTransform: "uppercase",
+                        }}>
+                          ↻ relancer (inclure les nouveaux)
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showDetail && thematicView && !videoView && (
             <div style={S.detail}>
               <button onClick={function() { setThematicView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>◈ Recherche Thematique</div>
