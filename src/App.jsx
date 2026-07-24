@@ -31,6 +31,8 @@ var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + 
 
 var BEST_BARS_SYSTEM = "Tu es un amoureux de rap qui cherche les MOMENTS qui touchent. On te donne les paroles d'un ALBUM ENTIER. Extrais les meilleurs PASSAGES (4-8 barres consecutives).\n\nJSON UNIQUEMENT:\n{\"bars\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"sens\":\"explication simple du passage\",\"track\":\"nom du morceau\",\"why\":\"pourquoi ca touche\",\"impact\":8}]}\n\nFORMAT \"lines\":\nChaque ligne est un objet {\"o\":\"original\",\"t\":\"traduction\"}. La traduction \"t\" doit etre CLAIRE et COMPREHENSIBLE. Si l'original dit 'Black marionettes dance limp, over the pit', la trad doit dire quelque chose comme 'Des marionnettes noires dansent mollement au-dessus du gouffre' — pas de flou, pas de poesie qui rajoute du mystere. On veut COMPRENDRE.\n\nCHAMP \"sens\" (OBLIGATOIRE, LE PLUS IMPORTANT):\nExplique le passage en 2-4 phrases ULTRA SIMPLES. Comme tu raconterais a un pote qui connait RIEN au rap US.\n- Dis QUI fait QUOI. Pas de generalites.\n- Si y a des refs (Challenger, un quartier, un evenement), EXPLIQUE-LES.\n- Si y a des images poetiques, dis ce qu'elles REPRESENTENT concretement.\nEXEMPLE BON: 'Il compare sa vie d'homme noir a un astronaute qui decolle mais qui brule comme la navette Challenger. Ensuite il decrit des corps noirs brules et pendus — il fait le lien entre les lynchages et l'explosion de Challenger. Les gens bienveillants sont trop loin pour aider, comme le soleil en hiver.'\nEXEMPLE MAUVAIS: 'Un bloc d'images fortes evoquant la violence et le sacrifice.'\n\nCHAMP \"why\" (1 phrase SIMPLE):\n- Parle comme un VRAI MEC, pas comme un critique.\nEXEMPLE BON: 'En 8 lignes il connecte l'explosion de Challenger aux lynchages — personne fait ca.'\nEXEMPLE MAUVAIS: 'La juxtaposition est brutale et poignante, evoquant des themes de sacrifice.'\n- Interdit: 'puissance narrative', 'poignant', 'saisissant', 'evoquant', 'juxtaposition', 'resonance'. Parle NORMAL.\n\nSELECTION:\n- 4 a 8 passages de 4-8 barres CONSECUTIVES par album.\n- Experiences universelles: pauvrete, perte, survie, famille, rue.\n- JAMAIS de punchlines isolees ou de barres non consecutives.\n- Trie par impact decroissant.\n- TOUT en francais.";
 
+var THEMATIC_SYSTEM = "L'utilisateur cherche des passages de rap qui illustrent un THEME precis. On te donne des paroles (un ou plusieurs albums) et un theme en francais.\n\nJSON UNIQUEMENT:\n{\"results\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"track\":\"nom du morceau\",\"artist\":\"artiste\",\"album\":\"album\",\"link\":\"comment ce passage illustre le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES DE SELECTION:\n- Cherche les passages (4-8 barres CONSECUTIVES) ou le rappeur ABORDE le theme de maniere CONCRETE et IMAGEE.\n- Un passage qui MONTRE le theme a travers une scene, une image, un vecu > un passage qui le NOMME.\n- Si le rappeur dit 'la trahison ca fait mal' c'est FAIBLE. S'il raconte une scene precise de trahison, c'est FORT.\n- 3 a 5 resultats tries par pertinence decroissante.\n- pertinence: 1 a 10. 10 = le passage EST le theme, incarne parfaitement.\n\nTRADUCTION:\n- Chaque ligne a sa traduction (\"t\"). Claire, comprehensible, pas poetique.\n- Si le morceau est en francais: \"t\" = null.\n\nCHAMP \"link\":\n- UNE phrase simple qui dit comment le passage illustre le theme.\n- Exemple: 'Il raconte comment son pere est parti quand il avait 6 ans et comment ca l'a forge.'\n- PAS de jargon critique. Parle normal.\n\nTOUT en francais (link, t).";
+
 var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur, creuse:\n- \"essentiel\": 2 a 4 lignes. Le cream (meilleures punchlines/images/multis selon le style).\n- \"notable\": 3 a 6 lignes de qualite.\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais. \"why\": nomme CE QUI est bien ecrit (le wordplay? le multi? la chute? le detail?), langage simple.\n- types: \"craft\" (technique/structure) / \"real\" (vecu) / \"depth\" (double sens) / \"subversion\" (chute inattendue, punchline)\n- Rap FR: privilegie les vraies punchlines et les jeux de mots. Rap anglophone: l'understatement qui devaste compte autant que la punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment, surtout sur plusieurs lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes)\n- \"rhymed\": pour CHAQUE ligne, la portion EXACTE qui porte la rime multi (sous-chaine exacte de la ligne)\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\nSi pas de vrais multis, multis=[]. N'invente pas.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note, note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. TOUJOURS en francais, MEME pour un morceau anglophone (seul le champ \"o\" garde la langue originale, et \"t\" la traduction). Phrases bien construites, pas de tournures bizarres.";
 
 async function callGemini(system, message, search, model, _retries) {
@@ -89,6 +91,12 @@ export default function App() {
   var _bb = useState(null), bestBars = _bb[0], setBestBars = _bb[1];
   var _bbv = useState(false), bestBarsView = _bbv[0], setBestBarsView = _bbv[1];
   var _bbl = useState(false), bestBarsLoading = _bbl[0], setBestBarsLoading = _bbl[1];
+  var _tv = useState(false), thematicView = _tv[0], setThematicView = _tv[1];
+  var _tq = useState(""), thematicQuery = _tq[0], setThematicQuery = _tq[1];
+  var _tr = useState(null), thematicResults = _tr[0], setThematicResults = _tr[1];
+  var _tl = useState(false), thematicLoading = _tl[0], setThematicLoading = _tl[1];
+  var _ts = useState([]), thematicSelected = _ts[0], setThematicSelected = _ts[1];
+  var _tc = useState(""), thematicCopied = _tc[0], setThematicCopied = _tc[1];
   var stopRef = useRef(false);
   var dRef = useRef({});
   var isMobile = window.innerWidth <= 700;
@@ -253,6 +261,7 @@ export default function App() {
     stopRef.current = true; setView("input"); setTracks([]); setData({});
     dRef.current = {}; setSel(null); setAuto(false); setDone(0);
     setBestBars(null); setBestBarsView(false);
+    setThematicView(false); setThematicResults(null);
     sessionClear();
   };
 
@@ -274,6 +283,75 @@ export default function App() {
       setFocusData({ error: e.message });
     }
     setFocusLoading(false);
+  };
+
+  // Scan localStorage pour trouver tous les albums decodes
+  var getCachedAlbums = function() {
+    var albums = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.startsWith(CV + ":tl:")) {
+          var parts = k.slice((CV + ":tl:").length).split(":");
+          if (parts.length >= 2) {
+            var a = parts[0], al = parts.slice(1).join(":");
+            var tl = tlGet(a, al);
+            if (tl && tl.length) {
+              // Verifie qu'au moins un son est decode
+              var decoded = tl.filter(function(t) { var c = cacheGet(a, t); return c && c.d; });
+              if (decoded.length > 0) albums.push({ artist: a, album: al, tracks: tl, decoded: decoded.length });
+            }
+          }
+        }
+      }
+    } catch (e) {}
+    return albums;
+  };
+
+  // Recherche thematique
+  var runThematicSearch = async function() {
+    if (!thematicQuery.trim() || thematicSelected.length === 0) return;
+    setThematicLoading(true);
+    setThematicResults(null);
+    try {
+      var allLyrics = "";
+      thematicSelected.forEach(function(alb) {
+        allLyrics += "\n\n======= " + alb.artist + " - " + alb.album + " =======\n";
+        alb.tracks.forEach(function(t) {
+          var c = cacheGet(alb.artist, t);
+          if (c && c.d && c.d.lines) {
+            allLyrics += "\n--- " + t + " ---\n";
+            c.d.lines.forEach(function(l) {
+              if (l.s) allLyrics += "\n" + l.s + "\n";
+              else if (l.o) allLyrics += l.o + "\n";
+            });
+          }
+        });
+      });
+      var r = await callGemini(THEMATIC_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nPAROLES:\n" + allLyrics, false);
+      setThematicResults(r.results || []);
+    } catch (e) {
+      setThematicResults([]);
+    }
+    setThematicLoading(false);
+  };
+
+  // Copier pour TikTok
+  var copyForTikTok = function(res) {
+    var lines = res.lines || [];
+    var text = "🎤 " + thematicQuery.toUpperCase() + "\n\n";
+    lines.forEach(function(l) {
+      text += l.o + "\n";
+      if (l.t) text += l.t + "\n";
+      text += "\n";
+    });
+    text += "🎵 " + res.track + " — " + res.artist;
+    if (res.album) text += " (" + res.album + ")";
+    try {
+      navigator.clipboard.writeText(text);
+      setThematicCopied(res.track);
+      setTimeout(function() { setThematicCopied(""); }, 2000);
+    } catch (e) {}
   };
 
   var closeFocus = function() { setFocusLine(null); setFocusData(null); };
@@ -353,8 +431,8 @@ export default function App() {
 
   var cur = sel && data[sel];
   var curD = cur ? cur.d : null;
-  var showSidebar = !isMobile || (!sel && !albumPlView && !bestBarsView);
-  var showDetail = !isMobile || sel || albumPlView || bestBarsView;
+  var showSidebar = !isMobile || (!sel && !albumPlView && !bestBarsView && !thematicView);
+  var showDetail = !isMobile || sel || albumPlView || bestBarsView || thematicView;
   var headerLabel = mode === "single" ? single : album;
 
   return (
@@ -425,17 +503,26 @@ export default function App() {
                   color: "#e05030", fontFamily: "inherit", fontSize: 9,
                   padding: "5px 10px", cursor: "pointer",
                   letterSpacing: 2, textTransform: "uppercase",
-                  margin: "0 12px 10px", display: "block",
+                  margin: "0 12px 5px", display: "block",
                 }}>
                   ★ best bars
                 </button>
               )}
+              <button onClick={function() { setThematicView(true); setAlbumPlView(false); setBestBarsView(false); setSel(null); }} style={{
+                background: "transparent", border: "1px solid #1a1a2a", borderRadius: 4,
+                color: "#38bdf8", fontFamily: "inherit", fontSize: 9,
+                padding: "5px 10px", cursor: "pointer",
+                letterSpacing: 2, textTransform: "uppercase",
+                margin: "0 12px 10px", display: "block",
+              }}>
+                ◈ recherche thematique
+              </button>
               {tracks.map(function(t, i) {
                 var st = (data[t] && data[t].st) || "idle";
                 var isSel = sel === t;
                 var colors = { idle: "#222", load: "#f0c040", ok: "#4ade80", err: "#ef4444" };
                 return (
-                  <div key={i} onClick={function() { setAlbumPlView(false); setBestBarsView(false); decode(t, false); }} style={Object.assign({}, S.trackRow, {
+                  <div key={i} onClick={function() { setAlbumPlView(false); setBestBarsView(false); setThematicView(false); decode(t, false); }} style={Object.assign({}, S.trackRow, {
                     background: isSel ? "#131313" : "transparent",
                     borderLeft: isSel ? "2px solid #f0c040" : "2px solid transparent",
                   })}>
@@ -452,7 +539,125 @@ export default function App() {
             </div>
           )}
 
-          {showDetail && bestBarsView && (
+          {showDetail && thematicView && (
+            <div style={S.detail}>
+              <button onClick={function() { setThematicView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <div style={S.trackTitle}>◈ Recherche Thematique</div>
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Trouve des passages par theme dans tes albums decodes</div>
+
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 9, color: "#38bdf8", letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>theme ou concept</div>
+                <input
+                  value={thematicQuery}
+                  onChange={function(e) { setThematicQuery(e.target.value); }}
+                  placeholder={"ex: grandir sans pere, la trahison, l'argent corrompt..."}
+                  onKeyDown={function(e) { if (e.key === "Enter") runThematicSearch(); }}
+                  style={{
+                    width: "100%", padding: "10px 12px", background: "#0a0a0a",
+                    color: "#ddd", border: "1px solid #222", borderRadius: 4,
+                    fontFamily: "inherit", fontSize: 13, outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 9, color: "#38bdf8", letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>albums a fouiller</div>
+                {(function() {
+                  var albums = getCachedAlbums();
+                  // Ajoute l'album courant s'il est pas deja dans la liste
+                  if (mode === "album" && artist && album && done > 0) {
+                    var exists = albums.some(function(a) { return norm(a.artist) === norm(artist) && norm(a.album) === norm(album); });
+                    if (!exists) albums.unshift({ artist: artist, album: album, tracks: tracks, decoded: done });
+                  }
+                  if (albums.length === 0) return <div style={{ fontSize: 11, color: "#444" }}>Aucun album decode en cache. Decode d'abord des albums.</div>;
+                  return albums.map(function(alb, ai) {
+                    var isSelected = thematicSelected.some(function(s) { return norm(s.artist) === norm(alb.artist) && norm(s.album) === norm(alb.album); });
+                    return (
+                      <div key={ai}
+                        onClick={function() {
+                          if (isSelected) {
+                            setThematicSelected(thematicSelected.filter(function(s) { return !(norm(s.artist) === norm(alb.artist) && norm(s.album) === norm(alb.album)); }));
+                          } else {
+                            setThematicSelected(thematicSelected.concat([alb]));
+                          }
+                        }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8,
+                          padding: "8px 10px", marginBottom: 4,
+                          background: isSelected ? "#0d1520" : "transparent",
+                          border: "1px solid " + (isSelected ? "#1a3050" : "#1a1a1a"),
+                          borderRadius: 4, cursor: "pointer",
+                        }}>
+                        <span style={{ color: isSelected ? "#38bdf8" : "#333", fontSize: 12 }}>{isSelected ? "■" : "□"}</span>
+                        <span style={{ fontSize: 12, color: isSelected ? "#ddd" : "#888" }}>{alb.artist} — {alb.album}</span>
+                        <span style={{ fontSize: 9, color: "#444", marginLeft: "auto" }}>{alb.decoded}/{alb.tracks.length}</span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              <button
+                onClick={runThematicSearch}
+                disabled={thematicLoading || !thematicQuery.trim() || thematicSelected.length === 0}
+                style={{
+                  width: "100%", padding: "12px 0",
+                  background: thematicLoading || !thematicQuery.trim() || thematicSelected.length === 0 ? "#111" : "#1a2a3a",
+                  color: thematicLoading ? "#555" : "#38bdf8",
+                  border: "1px solid #1a3050", borderRadius: 4,
+                  fontFamily: "inherit", fontSize: 11, cursor: "pointer",
+                  letterSpacing: 3, textTransform: "uppercase", marginBottom: 20,
+                }}>
+                {thematicLoading ? "recherche..." : "chercher"}
+              </button>
+
+              {thematicResults && thematicResults.length > 0 && thematicResults.map(function(res, ri) {
+                var pertColor = res.pertinence >= 9 ? "#38bdf8" : res.pertinence >= 7 ? "#4ade80" : "#888";
+                var lines = res.lines || [];
+                var isCopied = thematicCopied === res.track;
+                return (
+                  <div key={ri} style={{ marginBottom: 28, paddingLeft: 12, borderLeft: "3px solid " + pertColor }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 18, fontWeight: 800, color: pertColor, lineHeight: 1 }}>{res.pertinence}</span>
+                      <div>
+                        <div style={{ fontSize: 10, color: "#f0c040", letterSpacing: 1, textTransform: "uppercase" }}>{res.track}</div>
+                        <div style={{ fontSize: 9, color: "#555" }}>{res.artist}{res.album ? " — " + res.album : ""}</div>
+                      </div>
+                    </div>
+                    <div style={{ background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6, padding: "12px 14px", marginBottom: 8 }}>
+                      {lines.map(function(ln, li) {
+                        var isObj = typeof ln === "object";
+                        return (
+                          <div key={li} style={{ marginBottom: li < lines.length - 1 ? 8 : 0 }}>
+                            <div style={{ fontSize: 13, color: "#e6e6e6", lineHeight: 1.5 }}>{isObj ? ln.o : ln}</div>
+                            {isObj && ln.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", lineHeight: 1.4, marginTop: 2 }}>{ln.t}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {res.link && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.4, marginBottom: 8 }}>{res.link}</div>}
+                    <button
+                      onClick={function() { copyForTikTok(res); }}
+                      style={{
+                        background: "transparent", border: "1px solid " + (isCopied ? "#4ade80" : "#222"),
+                        borderRadius: 4, color: isCopied ? "#4ade80" : "#555",
+                        fontFamily: "inherit", fontSize: 9, padding: "5px 10px",
+                        cursor: "pointer", letterSpacing: 1, textTransform: "uppercase",
+                      }}>
+                      {isCopied ? "✓ copie" : "copier pour tiktok"}
+                    </button>
+                  </div>
+                );
+              })}
+
+              {thematicResults && thematicResults.length === 0 && !thematicLoading && (
+                <div style={{ color: "#444", fontSize: 11, textAlign: "center", padding: 20 }}>Aucun passage trouve pour ce theme dans les albums selectionnes.</div>
+              )}
+            </div>
+          )}
+
+          {showDetail && bestBarsView && !thematicView && (
             <div style={S.detail}>
               <button onClick={function() { setBestBarsView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>★ Best Bars</div>
