@@ -233,17 +233,61 @@ async function fetchFromSonar(artist, title) {
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
       body: JSON.stringify({
         model: "perplexity/sonar",
-        messages: [{ role: "user", content: "Donne-moi les paroles completes de \"" + title + "\" par " + artist + ". Retourne UNIQUEMENT le texte des paroles, rien d'autre. Pas de commentaire, pas de titre, pas de source. Juste les paroles ligne par ligne." }],
-        max_tokens: 4000,
+        messages: [{ role: "user", content: "Trouve une page web contenant les paroles completes de \"" + title + "\" par " + artist + ". Donne-moi UNIQUEMENT l'URL de la page (pas les paroles). Une seule URL, rien d'autre." }],
+        max_tokens: 300,
       }),
     });
     if (!r.ok) return "";
     var data = await r.json();
-    if (data.choices && data.choices[0] && data.choices[0].message) {
-      var text = (data.choices[0].message.content || "").trim();
-      text = text.replace(/^(Voici|Here are|Les paroles|Paroles de)[^\n]*\n*/i, "").trim();
-      text = text.replace(/\n*\s*(Source|Sources|Référence|Note)[^\n]*$/i, "").trim();
-      if (text.length > 100 && text.split("\n").length > 4) return text;
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) return "";
+    var text = (data.choices[0].message.content || "").trim();
+    var urls = text.match(/https?:\/\/[^\s\)\]"<>]+/g);
+    if (!urls || !urls.length) return "";
+    for (var i = 0; i < urls.length && i < 3; i++) {
+      var u = urls[i].replace(/[.,;:!?]+$/, "");
+      var scraped = await scrapeGenericLyrics(u);
+      if (scraped && scraped.length > 100) return scraped;
+    }
+  } catch(e) {}
+  return "";
+}
+async function scrapeGenericLyrics(url) {
+  try {
+    var r = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" },
+      redirect: "follow",
+    });
+    if (!r.ok) return "";
+    var html = await r.text();
+    if (html.length < 500) return "";
+    var text = "";
+    var jsonLd = html.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (jsonLd && jsonLd[1]) {
+      text = jsonLd[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
+      if (text.length > 100) return text;
+    }
+    var containers = [
+      /<div[^>]*data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/g,
+      /<div[^>]*class="[^"]*(?:lyrics|paroles|song-text|lyric-body)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<article[^>]*class="[^"]*lyrics[^"]*"[^>]*>([\s\S]*?)<\/article>/gi,
+      /<pre[^>]*class="[^"]*lyric[^"]*"[^>]*>([\s\S]*?)<\/pre>/gi,
+    ];
+    for (var c = 0; c < containers.length; c++) {
+      var matches = [];
+      var m;
+      var re = containers[c];
+      while ((m = re.exec(html)) !== null) matches.push(m[1]);
+      if (matches.length) {
+        text = matches.join("\n\n")
+          .replace(/<br\s*\/?>/gi, "\n")
+          .replace(/<\/p>/gi, "\n")
+          .replace(/<!--[\s\S]*?-->/g, "")
+          .replace(/<[^>]+>/g, "")
+          .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+          .replace(/&#x27;/g, "'").replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ")
+          .replace(/\n{3,}/g, "\n\n").trim();
+        if (text.length > 100) return text;
+      }
     }
   } catch(e) {}
   return "";
@@ -266,7 +310,6 @@ function matchHits(hits, artist) {
       if (paLower.indexOf(artistLower) !== -1 || artistLower.indexOf(paLower) !== -1) return hits[i].result;
     }
   }
-  for (var j = 0; j < hits.length; j++) { if (hits[j].type === "song" && hits[j].result) return hits[j].result; }
   return null;
 }
 async function searchGenius(query, artist, token) {
