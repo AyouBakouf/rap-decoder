@@ -29,6 +29,8 @@ var DEEP_ANALYSIS_SYSTEM = "Tu es un SUPER-ANALYSTE de rap obsessionnel. On te d
 
 var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre). Donne son contexte, en parlant SIMPLE comme a un pote.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom\",\"year\":2020,\"producer\":\"prod\",\"themes\":[\"theme1\",\"theme2\"],\"summary\":\"2-3 phrases simples\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- summary: 2-3 phrases en francais COURANT pour dire de quoi parle vraiment le son. Comme a un pote. Pas de critique musicale pretentieuse.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info.";
 
+var ALBUM_CONTEXT_SYSTEM = "Tu es un expert rap. On te donne un ALBUM et un ARTISTE. Donne le contexte de cet album.\n\nJSON UNIQUEMENT:\n{\"year\":2020,\"label\":\"nom du label\",\"producers\":[\"prod1\",\"prod2\"],\"themes\":[\"theme1\",\"theme2\",\"theme3\"],\"era\":\"description courte de l'epoque/mouvement\",\"importance\":\"1-2 phrases: pourquoi cet album compte dans la discographie ou le genre\",\"summary\":\"3-4 phrases: de quoi parle l'album, le fil rouge, l'ambiance\"}\n\nREGLES:\n- themes: 3-5 mots CONCRETS. 'deuil du pere', 'sortir du quartier', 'flexer sur les haters'. JAMAIS 'introspection', 'alienation'.\n- era: situe dans le temps/mouvement. Ex: 'boom du drill FR 2022', 'golden era US East Coast', 'post-JMJD Despo Rutti'.\n- importance: pourquoi ca compte. Parle NORMAL, pas comme un critique. Ex: 'Premier album solo apres la separation du groupe, il pose son identite.'\n- summary: raconte l'album comme a un pote. De quoi ca parle en vrai.\n- producers: les principaux. Si pas sur, mets [].\n- CRUCIAL: ne devine RIEN. Si pas sur a 100%, utilise la recherche web. Mieux vaut null que faux.\n- TOUT en francais.";
+
 var BEST_BARS_SYSTEM = "Tu es un amoureux de rap qui cherche les MOMENTS qui touchent. On te donne les paroles d'un ALBUM ENTIER. Extrais les meilleurs PASSAGES (4-8 barres consecutives).\n\nJSON UNIQUEMENT:\n{\"bars\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"sens\":\"explication courte\",\"track\":\"nom du morceau\",\"why\":\"pourquoi ca touche\",\"type\":\"vecu\",\"impact\":8}]}\n\nFORMAT \"lines\":\nChaque ligne est un objet {\"o\":\"original\",\"t\":\"traduction\"}. Traduction CLAIRE. Si francais: t=null.\n\nCHAMP \"type\" (OBLIGATOIRE):\n- \"vecu\": experience personnelle, douleur, famille, rue\n- \"technique\": passage avec des multisyllabiques, rimes internes, ou flow technique dingue\n- \"punchline\": chute qui claque, image qui tue\n- \"storytelling\": narration, scene concrete\n\nCHAMP \"sens\" (1-2 phrases MAX):\nExplique le passage SIMPLEMENT. Comme a un pote. Dis QUI fait QUOI. Si y a des refs, explique-les.\nPas de pavé. 1-2 phrases precises > 4 phrases vagues.\n\nCHAMP \"why\" (1 phrase COURTE):\nParle comme un VRAI MEC. Interdit: 'puissance narrative', 'poignant', 'saisissant', 'evoquant', 'juxtaposition', 'resonance'.\n\nSELECTION:\n- 6 a 10 passages de 4-8 barres CONSECUTIVES par album.\n- VARIER les types: inclure au moins 1-2 passages TECHNIQUES (multis, schemas de rimes fous) si l'album en a.\n- Experiences universelles + prouesses techniques. Les deux comptent.\n- JAMAIS de punchlines isolees ou de barres non consecutives.\n- Trie par impact decroissant (impact 1-10).\n- TOUT en francais.";
 
 var THEMATIC_SYSTEM = "L'utilisateur donne un THEME. Tu dois:\n1. DECOMPOSER ce theme en 3 a 5 ANGLES complementaires ou opposes\n2. Pour CHAQUE angle, chercher des passages pertinents dans les paroles fournies\n\nJSON UNIQUEMENT:\n{\n\"theme_complet\":\"reformulation enrichie du theme en 1 phrase\",\n\"angles\":[\n{\n\"name\":\"nom court de l'angle (ex: 'Porter un masque')\",\n\"description\":\"1 phrase qui explique cet angle du theme\",\n\"passages\":[{\"lines\":[{\"o\":\"ligne 1\",\"t\":\"trad 1\"},{\"o\":\"ligne 2\",\"t\":\"trad 2\"},{\"o\":\"ligne 3\",\"t\":\"trad 3\"},{\"o\":\"ligne 4\",\"t\":\"trad 4\"},{\"o\":\"ligne 5\",\"t\":\"trad 5\"},{\"o\":\"ligne 6\",\"t\":\"trad 6\"}],\"track\":\"morceau\",\"artist\":\"artiste\",\"album\":\"album\",\"link\":\"comment ca illustre cet angle, 1 phrase\",\"pertinence\":8}]\n}\n]\n}\n\nDECOMPOSITION DU THEME:\n- Trouve les FACES du concept: le pour/le contre, l'interieur/l'exterieur, celui qui agit/celui qui subit, la cause/la consequence.\n- Exemple pour 'assumer ses faiblesses': 'exposer ses vulnerabilites volontairement' / 'porter un masque pour cacher' / 'la vulnerabilite comme arme' / 'se faire exposer par quelqu'un' / 'la confession, l'aveu'\n- Exemple pour 'la trahison': 'se faire trahir par un proche' / 'trahir quelqu'un soi-meme' / 'le moment ou tu decouvres la trahison' / 'vivre apres la trahison' / 'la paranoia avant la preuve'\n- Les angles doivent etre CONCRETS et DIFFERENTS entre eux, pas des synonymes.\n\nPASSAGES:\n- MINIMUM 4, idealement 6-8 barres CONSECUTIVES du meme morceau pour chaque passage. JAMAIS 1-2 lignes isolees — un passage doit etre un BLOC qui a du sens seul.\n- Un passage qui MONTRE le theme a travers une scene > un passage qui le NOMME.\n- 1 a 3 passages par angle. Certains angles peuvent avoir 0 passages si rien de pertinent dans les paroles — c'est OK, garde l'angle quand meme (passages vide) pour que l'utilisateur voie qu'il existe.\n- Traduction ligne par ligne: {\"o\":\"original\",\"t\":\"traduction claire\"}. Si francais: t=null.\n- pertinence: 1-10.\n\nSTYLE:\n- Noms d'angles courts et percutants (3-5 mots).\n- \"link\": 1 phrase simple, comme a un pote.\n- TOUT en francais.";
@@ -139,6 +141,8 @@ export default function App() {
   var _vr = useState(null), videoResults = _vr[0], setVideoResults = _vr[1];
   var _vl = useState(false), videoLoading = _vl[0], setVideoLoading = _vl[1];
   var _vsd = useState({}), videoSugDecoding = _vsd[0], setVideoSugDecoding = _vsd[1];
+  var _ac = useState(null), albumCtx = _ac[0], setAlbumCtx = _ac[1];
+  var _acl = useState(false), albumCtxLoading = _acl[0], setAlbumCtxLoading = _acl[1];
   var stopRef = useRef(false);
   var dRef = useRef({});
   var isMobile = window.innerWidth <= 700;
@@ -177,13 +181,21 @@ export default function App() {
     }
   }, [view, tracks, artist, album, single, mode]);
 
+  var fetchAlbumContext = function(art, alb) {
+    setAlbumCtxLoading(true);
+    callGemini(ALBUM_CONTEXT_SYSTEM, "Album: \"" + alb + "\" par " + art, false, "perplexity/sonar")
+      .then(function(ctx) { setAlbumCtx(ctx); })
+      .catch(function() {})
+      .finally(function() { setAlbumCtxLoading(false); });
+  };
+
   var go = async function() {
     if (mode === "album") {
       if (!album.trim() || !artist.trim()) return;
-      // Tracklist deja en cache -> pas de re-call API
       var tlCached = tlGet(artist, album);
       if (tlCached && tlCached.length) {
         setTracks(tlCached); hydrate(artist, tlCached); setSel(null); setView("list");
+        if (!albumCtx) fetchAlbumContext(artist, album);
         return;
       }
       setView("loading"); setErr("");
@@ -192,6 +204,7 @@ export default function App() {
         if (r.tracks && r.tracks.length) {
           tlSet(artist, album, r.tracks);
           setTracks(r.tracks); hydrate(artist, r.tracks); setSel(null); setView("list");
+          fetchAlbumContext(artist, album);
         } else { setErr("Album introuvable"); setView("error"); }
       } catch (e) { setErr(e.message); setView("error"); }
     } else {
@@ -317,6 +330,7 @@ export default function App() {
     stopRef.current = true; setView("input"); setTracks([]); setData({});
     dRef.current = {}; setSel(null); setAuto(false); setDone(0);
     setBestBars(null); setBestBarsView(false);
+    setAlbumCtx(null); setAlbumCtxLoading(false);
     setThematicView(false); setThematicResults(null); setThematicSuggestions(null); setSuggestDecoding({});
     setVideoView(false); setVideoResults(null); setVideoSugDecoding({});
     sessionClear();
@@ -724,6 +738,37 @@ export default function App() {
                   </button>
                 )}
               </div>
+              {mode === "album" && (albumCtx || albumCtxLoading) && (
+                <div style={{ margin: "0 12px 10px", padding: "10px 12px", background: "#0a0a0f", border: "1px solid #1a1a2a", borderRadius: 6 }}>
+                  {albumCtxLoading && !albumCtx && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={Object.assign({}, S.spinner, { width: 10, height: 10, margin: 0 })} />
+                      <span style={{ fontSize: 9, color: "#555" }}>contexte album...</span>
+                    </div>
+                  )}
+                  {albumCtx && (
+                    <div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginBottom: 6, fontSize: 10 }}>
+                        {albumCtx.year && <span style={{ color: "#f0c040" }}>{albumCtx.year}</span>}
+                        {albumCtx.label && <span style={{ color: "#555" }}>{albumCtx.label}</span>}
+                        {albumCtx.era && <span style={{ color: "#38bdf8" }}>{albumCtx.era}</span>}
+                      </div>
+                      {albumCtx.themes && albumCtx.themes.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+                          {albumCtx.themes.map(function(th, ti) {
+                            return <span key={ti} style={{ fontSize: 9, color: "#a855f7", background: "#a855f712", padding: "2px 6px", borderRadius: 3 }}>{th}</span>;
+                          })}
+                        </div>
+                      )}
+                      {albumCtx.summary && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5, marginBottom: 6 }}>{albumCtx.summary}</div>}
+                      {albumCtx.importance && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{albumCtx.importance}</div>}
+                      {albumCtx.producers && albumCtx.producers.length > 0 && (
+                        <div style={{ fontSize: 9, color: "#444", marginTop: 6 }}>prod: {albumCtx.producers.join(", ")}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               {mode === "album" && done > 0 && (
                 <button onClick={extractAlbumPunchlines} style={{
                   background: "transparent", border: "1px solid #2a2040", borderRadius: 4,
