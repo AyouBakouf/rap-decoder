@@ -10,6 +10,20 @@ function realVal(v) {
   if (typeof v === "string" && v.trim().toLowerCase() === "null") return null;
   return v;
 }
+// Garde-fou mecanique: le LLM reformule parfois le theme general (la therapie, l'introspection)
+// comme si c'etait une "influence" au lieu de nommer une vraie personne (ex: Eckhart Tolle).
+// Si le texte contient une formule generique connue ET aucun nom propre autre que l'artiste, on le rejette.
+function isGenericFillerInfluence(s, artistName) {
+  if (!s) return false;
+  var lower = s.toLowerCase();
+  var genericPhrases = ["la therapie", "la thérapie", "l'examen de soi", "l'introspection", "le travail d'ecriture", "le travail d'écriture", "la sante mentale", "la santé mentale"];
+  var hasGeneric = genericPhrases.some(function(p) { return lower.indexOf(p) !== -1; });
+  if (!hasGeneric) return false;
+  var names = s.match(/\b[A-ZÀ-Ý][a-zà-ÿ'-]+\s+[A-ZÀ-Ý][a-zà-ÿ'-]+\b/g) || [];
+  var artistLower = (artistName || "").toLowerCase();
+  var hasOtherName = names.some(function(n) { return artistLower.indexOf(n.toLowerCase()) === -1; });
+  return !hasOtherName;
+}
 function isFrenchLang(lang) {
   var n = (lang || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
   return n === "francais" || n === "french" || n === "fr";
@@ -751,7 +765,8 @@ export default function App() {
                   {albumCtx && (function() {
                     var aYear = realVal(albumCtx.year), aLabel = realVal(albumCtx.label), aEra = realVal(albumCtx.era);
                     var aSummary = realVal(albumCtx.summary), aBackstory = realVal(albumCtx.backstory), aImportance = realVal(albumCtx.importance);
-                    var aInfluences = realVal(albumCtx.influences);
+                    var aInfluencesRaw = realVal(albumCtx.influences);
+                    var aInfluences = isGenericFillerInfluence(aInfluencesRaw, artist) ? null : aInfluencesRaw;
                     return (
                     <div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginBottom: 6, fontSize: 10 }}>
