@@ -52,6 +52,11 @@ async function runLookup(title, artist, token, res) {
       dbg.steps.push("genius_scrape: " + (lyrics ? lyrics.length + " chars" : "empty") + " | http=" + sr.status + " | blocks=" + sr.blocks + " | htmlLen=" + sr.htmlLen);
     }
     if (!lyrics || lyrics.length < 20) {
+      var sonarLyrics = await fetchFromSonar(artist, title);
+      dbg.steps.push("sonar_search: " + (sonarLyrics ? sonarLyrics.length + " chars" : "empty"));
+      if (sonarLyrics && sonarLyrics.length > 50) {
+        return res.status(200).json({ found: true, lyrics: sonarLyrics, source: "sonar-web-search", title: title, artist: artist, _debug: dbg });
+      }
       return res.status(200).json({ found: false, lyrics: "", source: geniusUrl, _debug: dbg });
     }
     return res.status(200).json({ found: true, lyrics: lyrics, source: geniusUrl, title: songTitle, artist: songArtist, _debug: dbg });
@@ -136,6 +141,30 @@ async function fetchFromGeniusHtml(geniusUrl) {
     if (combined.length > 30) out.lyrics = combined;
     return out;
   } catch (e) { return out; }
+}
+async function fetchFromSonar(artist, title) {
+  var apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return "";
+  try {
+    var r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
+      body: JSON.stringify({
+        model: "perplexity/sonar",
+        messages: [{ role: "user", content: "Trouve les paroles COMPLETES et EXACTES du morceau \"" + title + "\" par " + artist + ". Retourne UNIQUEMENT les paroles, mot pour mot, telles qu'elles apparaissent sur Genius ou un site de paroles. Pas de traduction, pas d'explication, pas de commentaire, pas de titre. Si tu ne trouves pas les paroles exactes, reponds uniquement: NOT_FOUND" }],
+        max_tokens: 8000,
+      }),
+    });
+    if (!r.ok) return "";
+    var data = await r.json();
+    var text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+    text = text.replace(/\[?\d+\]?\s*$/gm, "").trim();
+    if (!text || text.indexOf("NOT_FOUND") !== -1 || text.length < 80) return "";
+    var lines = text.split("\n").filter(function(l) { return l.trim().length > 0; });
+    if (lines.length < 4) return "";
+    return text;
+  } catch(e) {}
+  return "";
 }
 function buildGeniusUrl(artist, title) {
   var slug = (artist + " " + title)
