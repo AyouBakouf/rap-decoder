@@ -37,7 +37,7 @@ var SUGGEST_SYSTEM = "On te donne un THEME et une liste d'albums que l'utilisate
 
 var VIDRESEARCH_SYSTEM = "L'utilisateur prepare une VIDEO. Il decrit un ARGUMENT avec des artistes et moments precis.\n\nJSON UNIQUEMENT:\n{\n\"argument_resume\":\"2-3 phrases\",\n\"plan\":[{\"etape\":1,\"role\":\"ouverture\",\"description\":\"ce que ca montre\",\"extrait\":null,\"manque\":{\"track\":\"x\",\"artist\":\"x\",\"album\":\"x\"},\"pourquoi\":\"pourquoi\"}],\n\"suggestions\":[{\"artist\":\"x\",\"track\":\"x\",\"album\":\"x\",\"why\":\"x\",\"role\":\"x\",\"etape\":1}],\n\"connexions\":[{\"de\":\"morceau A\",\"vers\":\"morceau B\",\"lien\":\"description sans fausses citations\"}]\n}\n\nAVANT TOUTE CHOSE: lis le brief et identifie les ARTISTES PRINCIPAUX. Ex: si le brief parle de Kendrick et Drake, les artistes principaux sont Kendrick Lamar et Drake. POINT.\n\n=== REGLE LA PLUS IMPORTANTE ===\nTOUS les extraits, TOUTES les suggestions, TOUS les morceaux dans le plan = UNIQUEMENT des morceaux des ARTISTES PRINCIPAUX identifies.\n\nEXEMPLES DE CE QUI EST INTERDIT:\n- Brief parle de Kendrick/Drake -> suggerer Jay-Z, Boldy James, Little Simz, MIKE = INTERDIT\n- Brief mentionne 8 Mile comme PARALLELE conceptuel -> mettre Lose Yourself d Eminem comme extrait = INTERDIT. 8 Mile est une REFERENCE pour expliquer le concept, PAS un artiste a inclure. Mentionne 8 Mile dans les DESCRIPTIONS, pas dans les extraits.\n- Suggerer un artiste non nomme dans le brief = INTERDIT, meme s il est thematiquement proche.\n\nSi le brief dit Kendrick et Drake:\n- Suggestions = sons de KENDRICK + sons de DRAKE. Rien d autre.\n- Plan = extraits de KENDRICK ou DRAKE. Rien d autre.\n- Utilise la RECHERCHE WEB pour trouver TOUS les sons pertinents de ces deux artistes.\n\n=== RECHERCHE WEB ===\n- Cherche les VRAIS sons lies au brief. Pour un beef: trouve TOUS les diss des DEUX cotes.\n- Kendrick vs Drake 2024 = Like That, Push Ups, Taylor Made, euphoria, 6:16 in LA, Meet the Grahams, Family Matters, Not Like Us, The Heart Part 6, BBL Drizzy, wacced out murals.\n- Mr. Morale = United In Grief, N95, Father Time, Rich Spirit, We Cry Together, Purple Hearts, Count Me Out, Crown, Auntie Diaries, Mother I Sober, Mirror, Die Hard, Savior.\n- Cherche aussi les sons MOINS EVIDENTS (Die Hard = can I open up is it safe or not, c est de l auto-exposition aussi).\n- Mets 8-12 suggestions. Sois EXHAUSTIF sur les artistes du brief.\n\n=== CONNEXIONS ===\n- NE CITE JAMAIS de paroles sauf si trouvees sur le web et verifiees.\n- Decris le lien sans fausses citations. Ne confonds JAMAIS qui dit quoi.\n- Cherche les connexions PROFONDES: callbacks entre albums, mots reutilises, themes qui evoluent.\n- 4-8 connexions.\n\n=== PARALLELES CONCEPTUELS ===\nQuand le brief mentionne un film/concept (8 Mile, Eminem battle scene): utilise-le dans les DESCRIPTIONS et CONNEXIONS pour expliquer l argument. Mais NE METS PAS de morceaux de cet artiste/film dans le plan ou les suggestions.\n\nPLAN: 3-6 etapes. Si pas dans les paroles fournies: extrait=null, manque={track,artist,album}.\nSTYLE: parle normal. MOTS INTERDITS: met en lumiere, illustre, strategie, omnipresent, inattaquable, crucial, poignant, saisissant, resonant, transcende, incarnant. TOUT en francais.";
 
-var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur, creuse:\n- \"essentiel\": 2 a 4 lignes. Le cream (meilleures punchlines/images/multis selon le style).\n- \"notable\": 3 a 6 lignes de qualite.\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais. \"why\": nomme CE QUI est bien ecrit (le wordplay? le multi? la chute? le detail?), langage simple.\n- types: \"craft\" (technique/structure) / \"real\" (vecu) / \"depth\" (double sens) / \"subversion\" (chute inattendue, punchline)\n- Rap FR: privilegie les vraies punchlines et les jeux de mots. Rap anglophone: l'understatement qui devaste compte autant que la punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment, surtout sur plusieurs lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes)\n- \"rhymed\": pour CHAQUE ligne, la portion EXACTE qui porte la rime multi (sous-chaine exacte de la ligne)\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\nSi pas de vrais multis, multis=[]. N'invente pas.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note, note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. TOUJOURS en francais, MEME pour un morceau anglophone (seul le champ \"o\" garde la langue originale, et \"t\" la traduction). Phrases bien construites, pas de tournures bizarres.";
+var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\"}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\"}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\"}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur, creuse:\n- \"essentiel\": 2 a 4 lignes. Le cream (meilleures punchlines/images/multis selon le style).\n- \"notable\": 3 a 6 lignes de qualite.\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais. \"why\": nomme CE QUI est bien ecrit (le wordplay? le multi? la chute? le detail?), langage simple.\n- types: \"craft\" (technique/structure) / \"real\" (vecu) / \"depth\" (double sens) / \"subversion\" (chute inattendue, punchline)\n- Rap FR: privilegie les vraies punchlines et les jeux de mots. Rap anglophone: l'understatement qui devaste compte autant que la punch.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment entre les lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes, copiees mot pour mot)\n- \"rhymed\": pour CHAQUE ligne, la SOUS-CHAINE EXACTE qui porte la rime multi. Ce DOIT etre un extrait MOT POUR MOT de la ligne correspondante (pas un resume, pas une approximation). Les portions doivent RIMER entre elles phonetiquement (memes sons finaux sur 2+ syllabes). Exemple correct: [\"bouts d'chaines\", \"propre budget\"] car '-aines'/'-dget' riment. Exemple FAUX: [\"serrer\", \"tof'\"] car ces mots ne riment PAS.\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\nSi pas de vrais multis, multis=[]. N'INVENTE PAS de fausses rimes. Mieux vaut 0 multi que 4 faux.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note, note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. TOUJOURS en francais, MEME pour un morceau anglophone (seul le champ \"o\" garde la langue originale, et \"t\" la traduction). Phrases bien construites, pas de tournures bizarres.";
 
 async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
@@ -703,7 +703,7 @@ export default function App() {
                   letterSpacing: 2, textTransform: "uppercase",
                   margin: "0 12px 5px", display: "block",
                 }}>
-                  ★ analyser l'album
+                  ★ meilleures barres (album)
                 </button>
               )}
               {mode === "album" && done === tracks.length && tracks.length > 0 && (
@@ -1266,43 +1266,37 @@ export default function App() {
                       padding: "6px 12px", cursor: plLoading ? "default" : "pointer",
                       letterSpacing: 2, textTransform: "uppercase", marginBottom: 14,
                     }}>
-                      {plLoading ? "analyse..." : "★ analyser l'ecriture"}
+                      {plLoading ? "analyse..." : "★ meilleures barres"}
                     </button>
                   )}
 
                   {curD.analysis && <AnalysisView a={curD.analysis} />}
 
                   {curD.lines && curD.lines.length > 0 && (
-                    <Fold title="PAROLES + TRADUCTION" color="#4ade80">
+                    <Fold title={curD.lang === "francais" ? "PAROLES" : "PAROLES + TRADUCTION"} color="#4ade80">
                       {curD.lines.map(function(l, i) {
                         if (l.s) return <div key={i} style={S.section}>{l.s}</div>;
                         var conf = typeof l.c === "number" ? l.c : 100;
                         var isUncertain = conf < 70;
+                        var lineNotes = (curD.notes || []).filter(function(n) {
+                          return l.o && n.r && l.o.toLowerCase().indexOf(n.r.toLowerCase()) !== -1;
+                        });
                         return (
                           <div key={i} style={Object.assign({}, S.linePair, { cursor: "pointer" })} onClick={function() { analyzeLine(i, l); }}>
                             <div style={S.og}>
                               {l.o}
                               {isUncertain && <span title={"Confiance: " + conf + "%"} style={S.uncertainBadge}>?</span>}
                             </div>
-                            {l.t ? <div style={Object.assign({}, S.tr, isUncertain ? { color: "#8a7a4a" } : {})}>{l.t}</div> : (curD.lang === "francais" ? null : <div style={{ fontSize: 11, color: "#ff6b6b", marginTop: 4, fontStyle: "italic" }}>⚠ traduction manquante</div>)}
-                          </div>
-                        );
-                      })}
-                    </Fold>
-                  )}
-
-                  {curD.notes && curD.notes.length > 0 && (
-                    <Fold title="DECRYPTAGE" color="#e05030">
-                      {curD.notes.map(function(n, i) {
-                        var typeColors = { slang: "#f0c040", ref: "#e05030", wordplay: "#a855f7", sample: "#4ade80" };
-                        var typeColor = typeColors[n.t] || "#666";
-                        return (
-                          <div key={i} style={S.note}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <div style={S.noteRef}>{n.r}</div>
-                              {n.t && <span style={{ fontSize: 8, color: typeColor, border: "1px solid " + typeColor, padding: "1px 5px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 1 }}>{n.t}</span>}
-                            </div>
-                            <div style={S.noteExp}>{n.e}</div>
+                            {l.t && l.t !== l.o && curD.lang !== "francais" ? <div style={Object.assign({}, S.tr, isUncertain ? { color: "#8a7a4a" } : {})}>{l.t}</div> : null}
+                            {lineNotes.length > 0 && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                                {lineNotes.map(function(n, ni) {
+                                  var typeColors = { slang: "#f0c040", ref: "#e05030", wordplay: "#a855f7", sample: "#4ade80" };
+                                  var tc = typeColors[n.t] || "#555";
+                                  return <span key={ni} style={{ fontSize: 9, color: tc, background: tc + "12", padding: "2px 6px", borderRadius: 3, lineHeight: 1.3 }}>{n.r}: {n.e}</span>;
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1472,30 +1466,11 @@ function ScoreBar(props) {
 
 function AnalysisView(props) {
   var a = props.a;
-  var score = a.score;
-  var scoreColor = score >= 80 ? "#4ade80" : score >= 65 ? "#f0c040" : score >= 50 ? "#e0a030" : "#e05030";
-  var bd = a.score_breakdown || {};
   var essentiel = a.essentiel || [], notable = a.notable || [], multis = a.multis || [];
   return (
     <div style={{ marginBottom: 24 }}>
-      {typeof score === "number" && (
-        <Fold title="SCORE D'ECRITURE" color="#a855f7">
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
-            <div style={{ fontSize: 40, fontWeight: 800, color: scoreColor, lineHeight: 1, fontFamily: "inherit" }}>{score}<span style={{ fontSize: 14, color: "#444" }}>/100</span></div>
-            {a.score_note && <div style={{ fontSize: 11, color: "#999", flex: 1, lineHeight: 1.5 }}>{a.score_note}</div>}
-          </div>
-          <div>
-            {bd.economie != null && <ScoreBar label="economie" val={bd.economie} />}
-            {bd.imagery != null && <ScoreBar label="imagery" val={bd.imagery} />}
-            {bd.rimes != null && <ScoreBar label="rimes" val={bd.rimes} />}
-            {bd.subversion != null && <ScoreBar label="subversion" val={bd.subversion} />}
-            {bd.profondeur != null && <ScoreBar label="profondeur" val={bd.profondeur} />}
-          </div>
-        </Fold>
-      )}
-
       {essentiel.length > 0 && (
-        <Fold title={"ESSENTIEL (" + essentiel.length + ")"} color="#e05030">
+        <Fold title={"MEILLEURES BARRES (" + essentiel.length + ")"} color="#e05030">
           {essentiel.map(function(p, i) { return <LineCard key={i} p={p} />; })}
         </Fold>
       )}
