@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     }
 
     var cleaned = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-    res.status(200).json({ text: cleaned });
+    res.status(200).json({ text: cleaned, citations: data.citations || null });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

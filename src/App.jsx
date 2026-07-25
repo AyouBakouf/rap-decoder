@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 
 // ============ CACHE / SAUVEGARDE LOCALE ============
 var CV = "rdc2"; // version du cache (bumpe pour inclure le contexte)
+function stripCitationMarks(s) { return (s || "").replace(/\[\d+\]/g, "").replace(/\s+([.,!?])/g, "$1").trim(); }
 function norm(s) { return (s || "").trim().toLowerCase(); }
 function ckey(artist, name) { return CV + ":song:" + norm(artist) + ":" + norm(name); }
 function tlkey(artist, album) { return CV + ":tl:" + norm(artist) + ":" + norm(album); }
@@ -62,14 +63,18 @@ async function callGemini(system, message, search, model, _retries) {
   var text = data.text || "";
   var m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error("No JSON in response");
+  var attachCitations = function(obj) {
+    if (data.citations && data.citations.length) obj._citations = data.citations;
+    return obj;
+  };
   try {
-    return JSON.parse(m[0]);
+    return attachCitations(JSON.parse(m[0]));
   } catch(jsonErr) {
     var fixed = m[0]
       .replace(/,\s*}/g, "}")
       .replace(/,\s*]/g, "]")
       .replace(/[\x00-\x1f]/g, function(c) { return c === "\n" || c === "\r" || c === "\t" ? c : ""; });
-    try { return JSON.parse(fixed); } catch(e2) {}
+    try { return attachCitations(JSON.parse(fixed)); } catch(e2) {}
     if (_retries < 2) return callGemini(system, message, search, model, (_retries || 0) + 1);
     throw jsonErr;
   }
@@ -760,16 +765,23 @@ export default function App() {
                           })}
                         </div>
                       )}
-                      {albumCtx.summary && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5, marginBottom: 6 }}>{albumCtx.summary}</div>}
+                      {albumCtx.summary && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5, marginBottom: 6 }}>{stripCitationMarks(albumCtx.summary)}</div>}
                       {albumCtx.backstory && (
                         <div style={{ borderLeft: "2px solid #e05030", paddingLeft: 8, marginBottom: 8 }}>
                           <div style={{ fontSize: 8, color: "#e05030", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>contexte perso</div>
-                          <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{albumCtx.backstory}</div>
+                          <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{stripCitationMarks(albumCtx.backstory)}</div>
                         </div>
                       )}
-                      {albumCtx.importance && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{albumCtx.importance}</div>}
+                      {albumCtx.importance && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{stripCitationMarks(albumCtx.importance)}</div>}
                       {albumCtx.producers && albumCtx.producers.length > 0 && (
                         <div style={{ fontSize: 9, color: "#444", marginTop: 6 }}>prod: {albumCtx.producers.join(", ")}</div>
+                      )}
+                      {albumCtx._citations && albumCtx._citations.length > 0 && (
+                        <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #1a1a2a", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {albumCtx._citations.map(function(url, ci) {
+                            return <a key={ci} href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 8, color: "#444", textDecoration: "none" }}>[{ci + 1}]</a>;
+                          })}
+                        </div>
                       )}
                     </div>
                   )}
