@@ -4,6 +4,18 @@ import { useState, useRef, useCallback, useEffect } from "react";
 var CV = "rdc2"; // version du cache (bumpe pour inclure le contexte)
 function stripCitationMarks(s) { return (s || "").replace(/\[\d+\]/g, "").replace(/\s+([.,!?])/g, "$1").trim(); }
 function norm(s) { return (s || "").trim().toLowerCase(); }
+function isFrenchLang(lang) {
+  var n = (lang || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  return n === "francais" || n === "french" || n === "fr";
+}
+// Force t=null sur toutes les lignes francaises, peu importe comment le LLM a ecrit "lang"
+// (evite la duplication texte/traduction quand le LLM renvoie "français" au lieu de "francais")
+function sanitizeTranslation(r) {
+  if (r && isFrenchLang(r.lang) && r.lines) {
+    r.lines.forEach(function(l) { if (l.o) l.t = null; });
+  }
+  return r;
+}
 function ckey(artist, name) { return CV + ":song:" + norm(artist) + ":" + norm(name); }
 function tlkey(artist, album) { return CV + ":tl:" + norm(artist) + ":" + norm(album); }
 function cacheGet(artist, name) {
@@ -284,7 +296,7 @@ export default function App() {
       if (genius.found) {
         try {
           var prompt = "Voici les paroles EXACTES de \"" + name + "\" par " + artist + " (source: lrclib).\nCopie chaque ligne originale mot pour mot dans le champ \"o\". Ne modifie rien.\n\nPAROLES:\n\n" + genius.lyrics;
-          var r = await callGemini(TRANSLATE_SYSTEM, prompt, false);
+          var r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
           r.found = true;
           r._source = genius.source;
           up({ st: "ok", d: r }); setDone(function(p) { return p + 1; });
@@ -439,7 +451,7 @@ export default function App() {
       var genius = await fetchLyrics(sug.track, sug.artist, sug.album || "");
       if (genius.found && genius.lyrics) {
         var prompt = "Voici les paroles EXACTES de \"" + sug.track + "\" par " + sug.artist + ".\nCopie chaque ligne originale mot pour mot.\n\nPAROLES:\n\n" + genius.lyrics;
-        var r = await callGemini(TRANSLATE_SYSTEM, prompt, false);
+        var r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
         r.found = true;
         r._source = genius.source;
         if (r.lines && r.lines.length) cacheSet(sug.artist, sug.track, { d: r });
@@ -599,7 +611,7 @@ export default function App() {
       var genius = await fetchLyrics(sug.track, sug.artist, sug.album || "");
       if (genius.found && genius.lyrics) {
         var prompt = "Voici les paroles EXACTES de \"" + sug.track + "\" par " + sug.artist + ".\nCopie chaque ligne originale mot pour mot.\n\nPAROLES:\n\n" + genius.lyrics;
-        var r = await callGemini(TRANSLATE_SYSTEM, prompt, false);
+        var r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
         r.found = true;
         if (r.lines && r.lines.length) cacheSet(sug.artist, sug.track, { d: r });
         var existingTl = tlGet(sug.artist, sug.album || sug.track) || [];
@@ -1424,7 +1436,7 @@ export default function App() {
                   {curD.analysis && <AnalysisView a={curD.analysis} />}
 
                   {curD.lines && curD.lines.length > 0 && (
-                    <Fold title={curD.lang === "francais" ? "PAROLES" : "PAROLES + TRADUCTION"} color="#4ade80">
+                    <Fold title={isFrenchLang(curD.lang) ? "PAROLES" : "PAROLES + TRADUCTION"} color="#4ade80">
                       {curD.lines.map(function(l, i) {
                         if (l.s) return <div key={i} style={S.section}>{l.s}</div>;
                         var conf = typeof l.c === "number" ? l.c : 100;
@@ -1438,7 +1450,7 @@ export default function App() {
                               {l.o}
                               {isUncertain && <span title={"Confiance: " + conf + "%"} style={S.uncertainBadge}>?</span>}
                             </div>
-                            {l.t && l.t !== l.o && curD.lang !== "francais" ? <div style={Object.assign({}, S.tr, isUncertain ? { color: "#8a7a4a" } : {})}>{l.t}</div> : null}
+                            {l.t && l.t !== l.o && !isFrenchLang(curD.lang) ? <div style={Object.assign({}, S.tr, isUncertain ? { color: "#8a7a4a" } : {})}>{l.t}</div> : null}
                             {lineNotes.length > 0 && (
                               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
                                 {lineNotes.map(function(n, ni) {
