@@ -4,7 +4,7 @@ export default async function handler(req, res) {
   var apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'OPENROUTER_API_KEY not set' });
 
-  var model = process.env.DEEPSEEK_MODEL || "deepseek/deepseek-r1-0528:free";
+  var model = process.env.DEEPSEEK_MODEL || "deepseek/deepseek-r1-0528";
   var system = req.body.system || "";
   var message = req.body.message || "";
 
