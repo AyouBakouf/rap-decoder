@@ -90,13 +90,27 @@ async function fetchFromGeniusHtml(geniusUrl) {
   var out = { lyrics: "", status: 0, blocks: 0, htmlLen: 0 };
   try {
     var r = await fetch(geniusUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
     });
     out.status = r.status;
     if (!r.ok) return out;
     var html = await r.text();
     out.htmlLen = html.length;
     var blocks = html.match(/<div[^>]*data-lyrics-container="true"[^>]*>[\s\S]*?<\/div>(?=\s*(?:<div|<\/div))/g);
+    if (!blocks || !blocks.length) {
+      blocks = html.match(/<div[^>]*class="[^"]*Lyrics__Container[^"]*"[^>]*>[\s\S]*?<\/div>(?=\s*(?:<div|<\/div))/g);
+    }
+    if (!blocks || !blocks.length) {
+      var jsonMatch = html.match(/"lyrics":\s*\{[^}]*"plain":\s*"((?:[^"\\]|\\.)*)"/);
+      if (jsonMatch && jsonMatch[1]) {
+        var plain = jsonMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+        if (plain.length > 30) { out.lyrics = plain; out.blocks = -1; return out; }
+      }
+    }
     out.blocks = blocks ? blocks.length : 0;
     if (!blocks || !blocks.length) return out;
     var combined = blocks.map(function(b) {
