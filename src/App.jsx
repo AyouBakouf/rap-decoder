@@ -885,7 +885,7 @@ export default function App() {
                   )}
                   {videoResults.argument_resume && (
                     <div style={{ fontSize: 12, color: "#c084fc", fontStyle: "italic", marginBottom: 20, padding: "12px", background: "#0d0a10", border: "1px solid #1a1020", borderRadius: 6, lineHeight: 1.6 }}>
-                      {videoResults.argument_resume}
+                      {stripCitationMarks(videoResults.argument_resume)}
                     </div>
                   )}
 
@@ -902,7 +902,7 @@ export default function App() {
                               <span style={{ fontSize: 18, fontWeight: 800, color: rc, lineHeight: 1 }}>{step.etape}</span>
                               <span style={{ fontSize: 8, color: rc, border: "1px solid " + rc, padding: "2px 8px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 2 }}>{step.role}</span>
                             </div>
-                            <div style={{ fontSize: 11, color: "#bbb", marginBottom: 8, lineHeight: 1.5 }}>{step.description}</div>
+                            <div style={{ fontSize: 11, color: "#bbb", marginBottom: 8, lineHeight: 1.5 }}>{stripCitationMarks(step.description)}</div>
                             {step.extrait && step.extrait.track && (
                               <div style={{ fontSize: 9, color: "#f0c040", letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
                                 {step.extrait.track}{step.extrait.artist ? " — " + step.extrait.artist : ""}
@@ -928,7 +928,7 @@ export default function App() {
                                 <div style={{ fontSize: 10, color: "#666" }}>{step.manque.artist}{step.manque.album ? " — " + step.manque.album : ""}</div>
                               </div>
                             )}
-                            {step.pourquoi && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{step.pourquoi}</div>}
+                            {step.pourquoi && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{stripCitationMarks(step.pourquoi)}</div>}
                           </div>
                         );
                       })}
@@ -946,7 +946,7 @@ export default function App() {
                               <span style={{ fontSize: 10, color: "#333" }}>→</span>
                               <span style={{ fontSize: 11, color: "#f0c040", fontWeight: 600 }}>{cx.vers}</span>
                             </div>
-                            <div style={{ fontSize: 11, color: "#999", lineHeight: 1.4 }}>{cx.lien}</div>
+                            <div style={{ fontSize: 11, color: "#999", lineHeight: 1.4 }}>{stripCitationMarks(cx.lien)}</div>
                           </div>
                         );
                       })}
@@ -964,7 +964,7 @@ export default function App() {
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 12, color: "#ddd" }}>{sug.track}</div>
                               <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{sug.artist}{sug.album ? " — " + sug.album : ""}</div>
-                              {sug.why && <div style={{ fontSize: 10, color: "#888", marginTop: 3 }}>{sug.why}</div>}
+                              {sug.why && <div style={{ fontSize: 10, color: "#888", marginTop: 3 }}>{stripCitationMarks(sug.why)}</div>}
                               {sug.role && <div style={{ fontSize: 9, color: "#c084fc", marginTop: 3 }}>→ {sug.role}</div>}
                             </div>
                             <button
