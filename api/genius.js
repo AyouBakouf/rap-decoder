@@ -52,10 +52,10 @@ async function runLookup(title, artist, token, res) {
       dbg.steps.push("genius_scrape: " + (lyrics ? lyrics.length + " chars" : "empty") + " | http=" + sr.status + " | blocks=" + sr.blocks + " | htmlLen=" + sr.htmlLen);
     }
     if (!lyrics || lyrics.length < 20) {
-      var sonarLyrics = await fetchFromSonar(artist, title);
-      dbg.steps.push("sonar_search: " + (sonarLyrics ? sonarLyrics.length + " chars" : "empty"));
-      if (sonarLyrics && sonarLyrics.length > 50) {
-        return res.status(200).json({ found: true, lyrics: sonarLyrics, source: "sonar-web-search", title: title, artist: artist, _debug: dbg });
+      var pn = await fetchFromParolesNet(artist, title);
+      dbg.steps.push("paroles_net: " + (pn.lyrics ? pn.lyrics.length + " chars" : "empty") + " | http=" + pn.status + " | url=" + pn.url);
+      if (pn.lyrics) {
+        return res.status(200).json({ found: true, lyrics: pn.lyrics, source: pn.url, title: title, artist: artist, _debug: dbg });
       }
       return res.status(200).json({ found: false, lyrics: "", source: geniusUrl, _debug: dbg });
     }
@@ -141,6 +141,39 @@ async function fetchFromGeniusHtml(geniusUrl) {
     if (combined.length > 30) out.lyrics = combined;
     return out;
   } catch (e) { return out; }
+}
+async function fetchFromParolesNet(artist, title) {
+  try {
+    var toSlug = function(s) {
+      return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    };
+    var url = "https://www.paroles.net/" + toSlug(artist) + "/paroles-" + toSlug(title);
+    var r = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" },
+    });
+    if (!r.ok) return { lyrics: "", url: url, status: r.status };
+    var html = await r.text();
+    var match = html.match(/<article[^>]*class="lyrics"[^>]*>([\s\S]*?)<\/article>/);
+    if (!match) return { lyrics: "", url: url, status: r.status };
+    var article = match[1];
+    article = article.replace(/<br\s*\/?>/gi, "\n");
+    article = article.replace(/<\/div>\s*<div/gi, "\n\n<div");
+    article = article.replace(/<!--[\s\S]*?-->/g, "");
+    article = article.replace(/<[^>]+>/g, "");
+    article = article.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&#x27;/g, "'").replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ");
+    var lines = article.split("\n");
+    var filtered = lines.filter(function(l) {
+      var t = l.trim();
+      if (!t) return true;
+      if (/^Content_\d+$/.test(t)) return false;
+      if (t.indexOf("Paroles de la chanson") === 0) return false;
+      return true;
+    });
+    var text = filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    return { lyrics: text.length > 50 ? text : "", url: url, status: r.status };
+  } catch(e) { return { lyrics: "", url: "", status: 0 }; }
 }
 async function fetchFromSonar(artist, title) {
   var apiKey = process.env.OPENROUTER_API_KEY;
