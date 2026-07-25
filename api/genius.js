@@ -20,11 +20,9 @@ async function runLookup(title, artist, token, res) {
   var cleanTitle = title.replace(/[.,'!?#\(\)]/g, " ").replace(/\s+/g, " ").trim();
   var dbg = { steps: [] };
   try {
-    var searchDbg = [];
-    var song = await searchGenius(cleanTitle + " " + artist, artist, token, searchDbg);
-    if (!song) song = await searchGenius(cleanTitle, artist, token, searchDbg);
+    var song = await searchGenius(cleanTitle + " " + artist, artist, token);
+    if (!song) song = await searchGenius(cleanTitle, artist, token);
     dbg.steps.push("genius_search: " + (song ? ("found url=" + song.url) : "NOT FOUND"));
-    dbg.searchDetail = searchDbg;
     var songTitle = song ? song.title : title;
     var songArtist = (song && song.primary_artist && song.primary_artist.name) ? song.primary_artist.name : artist;
     var geniusUrl = song ? song.url : "";
@@ -175,30 +173,6 @@ async function fetchFromParolesNet(artist, title) {
     return { lyrics: text.length > 50 ? text : "", url: url, status: r.status };
   } catch(e) { return { lyrics: "", url: "", status: 0 }; }
 }
-async function fetchFromSonar(artist, title) {
-  var apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return "";
-  try {
-    var r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
-      body: JSON.stringify({
-        model: "perplexity/sonar",
-        messages: [{ role: "user", content: "Trouve les paroles COMPLETES et EXACTES du morceau \"" + title + "\" par " + artist + ". Retourne UNIQUEMENT les paroles, mot pour mot, telles qu'elles apparaissent sur Genius ou un site de paroles. Pas de traduction, pas d'explication, pas de commentaire, pas de titre. Si tu ne trouves pas les paroles exactes, reponds uniquement: NOT_FOUND" }],
-        max_tokens: 8000,
-      }),
-    });
-    if (!r.ok) return "";
-    var data = await r.json();
-    var text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
-    text = text.replace(/\[?\d+\]?\s*$/gm, "").trim();
-    if (!text || text.indexOf("NOT_FOUND") !== -1 || text.length < 80) return "";
-    var lines = text.split("\n").filter(function(l) { return l.trim().length > 0; });
-    if (lines.length < 4) return "";
-    return text;
-  } catch(e) {}
-  return "";
-}
 function buildGeniusUrl(artist, title) {
   var slug = (artist + " " + title)
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -220,31 +194,26 @@ function matchHits(hits, artist) {
   for (var j = 0; j < hits.length; j++) { if (hits[j].type === "song" && hits[j].result) return hits[j].result; }
   return null;
 }
-async function searchGenius(query, artist, token, dbg) {
+async function searchGenius(query, artist, token) {
   try {
     var r = await fetch("https://api.genius.com/search?q=" + encodeURIComponent(query), { headers: { "Authorization": "Bearer " + token } });
     var data = await r.json();
-    var hits = (data.response && data.response.hits) || [];
-    if (dbg) dbg.push("api_search(" + query.slice(0,40) + "): http=" + r.status + " hits=" + hits.length);
-    var found = matchHits(hits, artist);
+    var found = matchHits((data.response && data.response.hits) || [], artist);
     if (found) return found;
-  } catch(e) { if (dbg) dbg.push("api_search_err: " + e.message); }
+  } catch(e) {}
   try {
     var r2 = await fetch("https://genius.com/api/search/song?per_page=5&q=" + encodeURIComponent(query), {
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" },
     });
-    var raw2 = await r2.text();
-    if (dbg) dbg.push("public_search(" + query.slice(0,40) + "): http=" + r2.status + " len=" + raw2.length);
-    var data2 = JSON.parse(raw2);
+    var data2 = await r2.json();
     var sections = (data2.response && data2.response.sections) || [];
     for (var s = 0; s < sections.length; s++) {
       if (sections[s].type === "song") {
-        if (dbg) dbg.push("public_song_hits=" + (sections[s].hits || []).length);
         var found2 = matchHits(sections[s].hits || [], artist);
         if (found2) return found2;
         break;
       }
     }
-  } catch(e) { if (dbg) dbg.push("public_search_err: " + e.message); }
+  } catch(e) {}
   return null;
 }
