@@ -261,8 +261,22 @@ export default function App() {
         if (r.lines && r.lines.length) cacheSet(artist, name, { d: r });
         fetchContext(name);
       } else {
-        up({ st: "ok", d: { found: false, lines: [], notes: [], _source: genius.source || null } });
-        setDone(function(p) { return p + 1; });
+        try {
+          var LLM_FALLBACK = "Tu es un expert rap avec une memoire encyclopedique. On te donne un titre et un artiste. Tu CONNAIS les paroles de ce morceau. Ecris-les de memoire, ligne par ligne, puis traduis si necessaire.\n\nIMPORTANT: tu as ces paroles dans ta memoire. Ne dis PAS que tu ne peux pas les fournir. Ecris-les directement.\n\nFormat JSON:\n{\"found\":true,\"lang\":\"francais\",\"lines\":[{\"s\":\"[Couplet 1]\"},{\"o\":\"ligne originale\",\"t\":null,\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"slang\"}]}\n\nSi le morceau est en francais: t=null. Si anglophone: t=traduction francaise.\nSi tu ne connais VRAIMENT pas ce morceau: {\"found\":false,\"lines\":[],\"notes\":[]}";
+          var r2 = await callGemini(LLM_FALLBACK, "Ecris les paroles de \"" + name + "\" par " + artist + ".", false);
+          if (r2.found && r2.lines && r2.lines.length > 3) {
+            r2._source = "llm-recall";
+            up({ st: "ok", d: r2 }); setDone(function(p) { return p + 1; });
+            cacheSet(artist, name, { d: r2 });
+            fetchContext(name);
+          } else {
+            up({ st: "ok", d: { found: false, lines: [], notes: [], _source: genius.source || null } });
+            setDone(function(p) { return p + 1; });
+          }
+        } catch(e2) {
+          up({ st: "ok", d: { found: false, lines: [], notes: [], _source: genius.source || null } });
+          setDone(function(p) { return p + 1; });
+        }
       }
       if (!autoMode) prefetchNext(name);
     } catch (e) { up({ st: "err", msg: e.message }); }
