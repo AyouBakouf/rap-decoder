@@ -4,6 +4,12 @@ import { useState, useRef, useCallback, useEffect } from "react";
 var CV = "rdc2"; // version du cache (bumpe pour inclure le contexte)
 function stripCitationMarks(s) { return (s || "").replace(/\[\d+\]/g, "").replace(/\s+([.,!?])/g, "$1").trim(); }
 function norm(s) { return (s || "").trim().toLowerCase(); }
+// Le LLM ecrit parfois la STRING "null" au lieu de la vraie valeur JSON null — traite les deux pareil
+function realVal(v) {
+  if (v == null) return null;
+  if (typeof v === "string" && v.trim().toLowerCase() === "null") return null;
+  return v;
+}
 function isFrenchLang(lang) {
   var n = (lang || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
   return n === "francais" || n === "french" || n === "fr";
@@ -40,7 +46,7 @@ var TRANSLATE_SYSTEM = "Tu es un traducteur rap. On te donne les PAROLES EXACTES
 
 var DEEP_ANALYSIS_SYSTEM = "Tu es un SUPER-ANALYSTE de rap obsessionnel. On te donne UNE ligne d'un morceau + le contexte + les lignes autour. Tu dois SURINTREPRETER: trouve TOUTES les couches de sens, meme les plus tirees. Mieux vaut proposer une interpretation audacieuse que rater un double sens.\n\nREGLE ABSOLUE: TOUT en FRANCAIS.\n\nReponds en JSON:\n{\n\"meaning\":\"ce que l'artiste dit, 2-3 phrases\",\n\"layers\":[\"couche de sens 1\",\"couche de sens 2\"],\n\"callbacks\":[{\"ref\":\"titre du morceau/album reference\",\"line\":\"la ligne/concept reference\",\"link\":\"comment ca se connecte\"}],\n\"refs\":[{\"r\":\"ref\",\"e\":\"explication\"}],\n\"wordplay\":\"explication si present\"\n}\n\nCHAMP \"layers\" (LE PLUS IMPORTANT — SURINTERPRETE):\nTrouve CHAQUE couche de sens possible dans la ligne:\n- Le sens litteral evident\n- Le double sens (mot qui veut dire 2 choses)\n- Le sens metaphorique (l'image renvoie a quoi)\n- Le sous-texte biographique (ca fait reference a quoi dans la vie de l'artiste)\n- La lecture politique/sociale si applicable\n- Le sens qui change quand on connait le contexte de l'album\nMets TOUTES les lectures, meme celles qui sont un peu tirees. 2 a 5 couches par ligne. Une seule couche = t'as pas assez creuse.\n\nCHAMP \"callbacks\" (CONNEXIONS AVEC D'AUTRES SONS):\nCherche si cette ligne fait echo a d'AUTRES morceaux du meme artiste:\n- Meme mot/image reutilise differemment (ex: Kendrick 'Wi-Fi' dans N95 vs 6:16 in LA)\n- Theme qui revient d'un album a l'autre\n- Reponse a un ancien morceau\n- Evolution d'une position (il disait X avant, maintenant il dit Y)\n- Reference a un beef, un featuring, un event\nSi y'a un callback, c'est de L'OR — mets-le. Si t'es pas sur a 100% mais que ca semble plausible, mets-le quand meme avec une nuance dans le 'link'.\nSi aucun callback trouve: callbacks=[]\n\nCHAMP \"refs\":\nPersonnes, marques, lieux, evenements, samples, argot. Explique chaque ref.\n\nCHAMP \"wordplay\":\nDouble sens, calembour, homophonie, multi. null si rien.\n\nSTYLE: parle comme un vrai passionne de rap qui decortique un son avec son pote. Direct, enthousiaste sur les trouvailles, pas academique.";
 
-var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre, parfois l'album). Donne du VRAI contexte et une VRAIE lecture de ce morceau specifique, en parlant SIMPLE comme a un pote qui connait le sujet a fond. Pas un resume Wikipedia — une vraie analyse.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom ou null\",\"year\":2020,\"producer\":\"prod ou null\",\"themes\":[\"theme1\",\"theme2\"],\"role\":\"le role de CE morceau dans l'album/la discographie, ou null\",\"summary\":\"3-5 phrases: de quoi parle vraiment ce morceau, en profondeur\",\"standout\":\"1-2 phrases: ce qui est particulier ou notable dans ce morceau precis, ou null\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- \"role\": la fonction de CE morceau specifiquement — intro/mise en contexte, single/tube, tournant emotionnel de l'album, morceau le plus dur/vulnerable, outro/conclusion, feature marquant, sample notable, etc. Precise et concret, pas vague. Si tu sais pas: null.\n- \"summary\": va au-dela du sujet general. Explique CE QUE l'artiste dit vraiment, le ton, l'angle qu'il prend. Pas 'il parle de son enfance difficile' (trop vague) mais quel ANGLE precis il prend sur le sujet, ce qu'il en dit de particulier. Langage courant, comme a un pote, pas de critique musicale pretentieuse.\n- \"standout\": qu'est-ce qui distingue CE morceau des autres du meme artiste/album — une prise de risque, un sujet rarement aborde dans le rap, un choix de production, une collab notable, un moment de vulnerabilite rare. Si rien de special: null, n'invente pas un truc pour remplir le champ.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info. Meme discipline pour 'role' et 'standout': mieux vaut null qu'une affirmation en l'air.";
+var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre, parfois l'album). Donne du VRAI contexte et une VRAIE lecture de ce morceau specifique, en parlant SIMPLE comme a un pote qui connait le sujet a fond. Pas un resume Wikipedia — une vraie analyse.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom ou null\",\"year\":null,\"producer\":\"prod ou null\",\"themes\":[\"theme1\",\"theme2\"],\"role\":\"le role de CE morceau dans l'album/la discographie, ou null\",\"summary\":\"3-5 phrases: de quoi parle vraiment ce morceau, en profondeur\",\"standout\":\"1-2 phrases: ce qui est particulier ou notable dans ce morceau precis, ou null\"}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- \"role\": la fonction de CE morceau specifiquement — intro/mise en contexte, single/tube, tournant emotionnel de l'album, morceau le plus dur/vulnerable, outro/conclusion, feature marquant, sample notable, etc. Precise et concret, pas vague. Si tu sais pas: la valeur JSON null (pas le mot \"null\" entre guillemets).\n- \"summary\": va au-dela du sujet general, et surtout NE SOFTEN PAS le sujet reel du morceau. Si le morceau parle de coups, de maltraitance, de violence familiale, de deuil, de prison: DIS-LE frontalement, ne le reformule pas en histoire de perseverance/resilience feel-good. Explique CE QUE l'artiste dit vraiment, le ton, l'angle qu'il prend — pas une lecture edulcoree qui evite le sujet dur pour una morale positive. Exemple MAUVAIS (edulcore): 'un hymne a la perseverance et la force de se relever'. Exemple BON (specifique): 'il raconte les coups et les chatiments corporels recus de ses parents pendant l'enfance, et retourne cette violence en question: pourquoi le parent a le droit de frapper sans expliquer'. Langage courant, comme a un pote, pas de critique musicale pretentieuse.\n- \"standout\": qu'est-ce qui distingue CE morceau des autres du meme artiste/album — une prise de risque, un sujet rarement aborde dans le rap, un choix de production, une collab notable, un moment de vulnerabilite rare. Si rien de special: la valeur JSON null, n'invente pas un truc pour remplir le champ.\n- CRUCIAL sur year: ne mets une annee QUE si une recherche web confirme explicitement la date de sortie. Si t'hesites entre plusieurs annees ou que tu approximes: la valeur JSON null. Ne choisis jamais 'la plus probable'.\n- REGLE DE FORMAT: quand un champ est incertain, mets la vraie valeur JSON null (sans guillemets), JAMAIS la chaine de caracteres \"null\" entre guillemets — ce sont deux choses differentes et la deuxieme s'affiche comme du texte casse dans l'app.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info. Meme discipline pour 'role' et 'standout': mieux vaut null qu'une affirmation en l'air.";
 
 var ALBUM_CONTEXT_SYSTEM = "Tu es un expert rap. On te donne un ALBUM et un ARTISTE. Donne le contexte de cet album.\n\nJSON UNIQUEMENT:\n{\"year\":null,\"label\":\"nom du label ou null\",\"producers\":[\"prod1\",\"prod2\"],\"themes\":[\"theme1\",\"theme2\",\"theme3\"],\"era\":\"description courte de l'epoque/mouvement\",\"backstory\":\"l'evenement personnel reel qui a mene a cet album, ou null\",\"importance\":\"1-2 phrases: pourquoi cet album compte dans la discographie ou le genre\",\"summary\":\"3-4 phrases: de quoi parle l'album, le fil rouge, l'ambiance\"}\n\n=== REGLE LA PLUS IMPORTANTE, s'applique a CHAQUE champ factuel (year, label, producers, backstory) ===\nPour un champ factuel precis, tu as DEUX options: (1) tu as trouve l'info via une recherche web et tu es sur a 100%, tu la donnes telle quelle. (2) tu n'es pas sur, tu mets null (ou [] pour producers). IL N'Y A PAS DE TROISIEME OPTION. Ne remplis JAMAIS un champ avec une valeur plausible, approximative ou 'probablement correcte' — une annee approximative, un nom de label invente, une date arrondie sont TOUTES des ERREURS, pas des approximations acceptables. 3 champs a null valent mieux qu'1 champ faux.\n\"year\" EN PARTICULIER: c'est le champ le plus souvent devine au pif. Ne mets une annee QUE si ta recherche web a trouve une source qui la confirme explicitement (date de sortie, article, page de l'album). Si tu n'as trouve qu'une annee approximative ou que tu hesites entre plusieurs annees possibles, mets null — ne choisis PAS la plus probable, ne fais PAS de moyenne, n'utilise PAS l'annee de debut de carriere de l'artiste comme approximation.\n\nREGLES SPECIFIQUES:\n- themes: 3-5 mots CONCRETS. 'deuil du pere', 'sortir du quartier', 'flexer sur les haters'. JAMAIS 'introspection', 'alienation'.\n- era: situe dans le temps/mouvement. Ex: 'boom du drill FR 2022', 'golden era US East Coast', 'post-JMJD Despo Rutti'.\n- label: le VRAI nom du label/maison de disque QUE SI tu es sur a 100% (confirme par une source fiable). N'INVENTE JAMAIS un nom de label, projet ou collectif qui ressemble a un label. Si le moindre doute: null. Un label errone est pire qu'un champ vide.\n- \"backstory\" (IMPORTANT, ne pas oublier): l'evenement de vie REEL et PUBLIC qui explique pourquoi l'artiste a fait cet album — hospitalisation, deuil, rupture, incarceration, maladie, episode violent, separation d'un groupe, etc.\nCette info n'est a inclure QUE si l'artiste ou la presse en a deja parle PUBLIQUEMENT (interview, article) — dans ce cas c'est un fait deja assume publiquement par l'artiste lui-meme, tu n'as AUCUNE raison de l'edulcorer ou de rester vague par exces de precaution.\nMOTS/FORMULES INTERDITS (ils cachent le fait au lieu de le dire): 'des difficultes', 'des problemes', 'des deboires', 'une epreuve', 'une periode compliquee/difficile', 'des soucis', 'des blessures', 'ce qui l'a abime'.\nSi la source utilise un terme precis, REPRENDS-LE tel quel: hospitalisation psychiatrique, crise de paranoia/delire, tentative de suicide, overdose, garde a vue, incarceration, agression, etc.\nExemple MAUVAIS (trop vague): 'une peine sentimentale et des problemes psychiatriques l'ont plonge dans une depression'.\nExemple BON (precis et factuel): 'il a ete hospitalise en psychiatrie a plusieurs reprises suite a des crises de paranoia et de delire mystique, ce qu'il detaille lui-meme dans plusieurs interviews'.\n2-3 phrases factuelles, sans sensationalisme ni jugement moral — tu rapportes un fait deja public, pas un scandale. Cite la source si possible ('selon ses declarations a X', 'd'apres Y media').\nSi rien de tel n'est documente publiquement: null. Ne SPECULE JAMAIS au-dela de ce qui est confirme publiquement — la precision s'applique UNIQUEMENT a des faits deja sourcés, jamais a une hypothese.\n- importance: pourquoi ca compte. Parle NORMAL, pas comme un critique. Ex: 'Premier album solo apres la separation du groupe, il pose son identite.'\n- summary: raconte l'album comme a un pote. De quoi ca parle en vrai.\n- producers: les principaux. Si pas sur, mets [].\n- CRUCIAL: ne devine RIEN. Si pas sur a 100%, utilise la recherche web. Mieux vaut null que faux.\n- TOUT en francais.";
 
@@ -763,12 +769,15 @@ export default function App() {
                       <span style={{ fontSize: 9, color: "#555" }}>contexte album...</span>
                     </div>
                   )}
-                  {albumCtx && (
+                  {albumCtx && (function() {
+                    var aYear = realVal(albumCtx.year), aLabel = realVal(albumCtx.label), aEra = realVal(albumCtx.era);
+                    var aSummary = realVal(albumCtx.summary), aBackstory = realVal(albumCtx.backstory), aImportance = realVal(albumCtx.importance);
+                    return (
                     <div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginBottom: 6, fontSize: 10 }}>
-                        {albumCtx.year && <span style={{ color: "#f0c040" }}>{albumCtx.year}</span>}
-                        {albumCtx.label && <span style={{ color: "#555" }}>{albumCtx.label}</span>}
-                        {albumCtx.era && <span style={{ color: "#38bdf8" }}>{albumCtx.era}</span>}
+                        {aYear && <span style={{ color: "#f0c040" }}>{aYear}</span>}
+                        {aLabel && <span style={{ color: "#555" }}>{aLabel}</span>}
+                        {aEra && <span style={{ color: "#38bdf8" }}>{aEra}</span>}
                       </div>
                       {albumCtx.themes && albumCtx.themes.length > 0 && (
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
@@ -777,14 +786,14 @@ export default function App() {
                           })}
                         </div>
                       )}
-                      {albumCtx.summary && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5, marginBottom: 6 }}>{stripCitationMarks(albumCtx.summary)}</div>}
-                      {albumCtx.backstory && (
+                      {aSummary && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5, marginBottom: 6 }}>{stripCitationMarks(aSummary)}</div>}
+                      {aBackstory && (
                         <div style={{ borderLeft: "2px solid #e05030", paddingLeft: 8, marginBottom: 8 }}>
                           <div style={{ fontSize: 8, color: "#e05030", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>contexte perso</div>
-                          <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{stripCitationMarks(albumCtx.backstory)}</div>
+                          <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{stripCitationMarks(aBackstory)}</div>
                         </div>
                       )}
-                      {albumCtx.importance && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{stripCitationMarks(albumCtx.importance)}</div>}
+                      {aImportance && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{stripCitationMarks(aImportance)}</div>}
                       {albumCtx.producers && albumCtx.producers.length > 0 && (
                         <div style={{ fontSize: 9, color: "#444", marginTop: 6 }}>prod: {albumCtx.producers.join(", ")}</div>
                       )}
@@ -796,7 +805,8 @@ export default function App() {
                         </div>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
               {tracks.map(function(t, i) {
@@ -1403,34 +1413,39 @@ export default function App() {
                     </div>
                   </div>
 
-                  {curD.context && (curD.context.summary || curD.context.album) && (
-                    <Fold title="CONTEXTE & ANALYSE" color="#f0c040">
-                      {(curD.context.album || curD.context.year || curD.context.producer) && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginBottom: 10, fontSize: 11 }}>
-                          {curD.context.album && <span style={{ color: "#555" }}><span style={{ color: "#333", textTransform: "uppercase", fontSize: 9 }}>album:</span> <span style={{ color: "#999" }}>{curD.context.album}</span></span>}
-                          {curD.context.year && <span style={{ color: "#555" }}><span style={{ color: "#333", textTransform: "uppercase", fontSize: 9 }}>annee:</span> <span style={{ color: "#999" }}>{curD.context.year}</span></span>}
-                          {curD.context.producer && <span style={{ color: "#555" }}><span style={{ color: "#333", textTransform: "uppercase", fontSize: 9 }}>prod:</span> <span style={{ color: "#999" }}>{curD.context.producer}</span></span>}
-                        </div>
-                      )}
-                      {curD.context.role && (
-                        <div style={{ fontSize: 10, color: "#f0c040", marginBottom: 10, fontStyle: "italic" }}>{curD.context.role}</div>
-                      )}
-                      {curD.context.themes && curD.context.themes.length > 0 && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                          {curD.context.themes.map(function(th, ti) {
-                            return <span key={ti} style={{ fontSize: 9, padding: "2px 8px", border: "1px solid #2a2a2a", borderRadius: 20, color: "#888", letterSpacing: 1 }}>{th}</span>;
-                          })}
-                        </div>
-                      )}
-                      {curD.context.summary && <div style={{ fontSize: 12, lineHeight: 1.6, color: "#bbb", marginBottom: curD.context.standout ? 10 : 0 }}>{curD.context.summary}</div>}
-                      {curD.context.standout && (
-                        <div style={{ borderLeft: "2px solid #a855f7", paddingLeft: 8, marginTop: 4 }}>
-                          <div style={{ fontSize: 8, color: "#a855f7", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>ce qui distingue ce morceau</div>
-                          <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5 }}>{curD.context.standout}</div>
-                        </div>
-                      )}
-                    </Fold>
-                  )}
+                  {curD.context && (realVal(curD.context.summary) || realVal(curD.context.album)) && (function() {
+                    var ctx = curD.context;
+                    var cAlbum = realVal(ctx.album), cYear = realVal(ctx.year), cProd = realVal(ctx.producer);
+                    var cRole = realVal(ctx.role), cSummary = realVal(ctx.summary), cStandout = realVal(ctx.standout);
+                    return (
+                      <Fold title="CONTEXTE & ANALYSE" color="#f0c040">
+                        {(cAlbum || cYear || cProd) && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginBottom: 10, fontSize: 11 }}>
+                            {cAlbum && <span style={{ color: "#555" }}><span style={{ color: "#333", textTransform: "uppercase", fontSize: 9 }}>album:</span> <span style={{ color: "#999" }}>{cAlbum}</span></span>}
+                            {cYear && <span style={{ color: "#555" }}><span style={{ color: "#333", textTransform: "uppercase", fontSize: 9 }}>annee:</span> <span style={{ color: "#999" }}>{cYear}</span></span>}
+                            {cProd && <span style={{ color: "#555" }}><span style={{ color: "#333", textTransform: "uppercase", fontSize: 9 }}>prod:</span> <span style={{ color: "#999" }}>{cProd}</span></span>}
+                          </div>
+                        )}
+                        {cRole && (
+                          <div style={{ fontSize: 10, color: "#f0c040", marginBottom: 10, fontStyle: "italic" }}>{cRole}</div>
+                        )}
+                        {ctx.themes && ctx.themes.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                            {ctx.themes.map(function(th, ti) {
+                              return <span key={ti} style={{ fontSize: 9, padding: "2px 8px", border: "1px solid #2a2a2a", borderRadius: 20, color: "#888", letterSpacing: 1 }}>{th}</span>;
+                            })}
+                          </div>
+                        )}
+                        {cSummary && <div style={{ fontSize: 12, lineHeight: 1.6, color: "#bbb", marginBottom: cStandout ? 10 : 0 }}>{cSummary}</div>}
+                        {cStandout && (
+                          <div style={{ borderLeft: "2px solid #a855f7", paddingLeft: 8, marginTop: 4 }}>
+                            <div style={{ fontSize: 8, color: "#a855f7", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>ce qui distingue ce morceau</div>
+                            <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5 }}>{cStandout}</div>
+                          </div>
+                        )}
+                      </Fold>
+                    );
+                  })()}
 
                   {curD.found && !curD.context && (
                     <div style={{ fontSize: 10, color: "#444", marginBottom: 14, fontStyle: "italic", letterSpacing: 1 }}>analyse du contexte en cours...</div>
@@ -1562,7 +1577,6 @@ export default function App() {
                         );
                       })}
                     </div>
-                  )}
                   )}
                 </div>
               )}
