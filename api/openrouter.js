@@ -8,19 +8,18 @@ export default async function handler(req, res) {
   var system = req.body.system || "";
   var message = req.body.message || "";
 
-  var messages = [];
-  if (system) messages.push({ role: "system", content: system });
-  messages.push({ role: "user", content: message });
+  // R1 prefere tout dans le user message plutot qu'un system separe
+  var fullMessage = system ? system + "\n\n---\n\n" + message : message;
 
   var body = {
     model: model,
-    messages: messages,
-    max_tokens: 16000,
+    messages: [{ role: "user", content: fullMessage }],
+    max_tokens: 12000,
   };
 
   try {
     var controller = new AbortController();
-    var timeout = setTimeout(function() { controller.abort(); }, 55000); // 55 sec timeout
+    var timeout = setTimeout(function() { controller.abort(); }, 55000);
 
     var response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -39,56 +38,51 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       if (response.status === 429) {
-        return res.status(429).json({ rateLimited: true, retryAfter: 30, error: 'Rate limit OpenRouter' });
+        return res.status(429).json({ rateLimited: true, retryAfter: 30, error: 'Rate limit' });
       }
-      return res.status(response.status).json({ error: 'OpenRouter ' + response.status, debug: raw.slice(0, 1000) });
+      // Inclure le detail de l'erreur
+      var detail = "";
+      try { var parsed = JSON.parse(raw); detail = parsed.error && parsed.error.message ? parsed.error.message : raw.slice(0, 500); } catch(e) { detail = raw.slice(0, 500); }
+      return res.status(response.status).json({ error: 'OpenRouter ' + response.status + ': ' + detail });
     }
 
     var data;
     try { data = JSON.parse(raw); } catch (e) {
-      return res.status(500).json({ error: 'Reponse invalide', debug: raw.slice(0, 800) });
+      return res.status(500).json({ error: 'Reponse invalide: ' + raw.slice(0, 300) });
     }
 
     if (data.error) {
-      return res.status(500).json({ error: data.error.message || JSON.stringify(data.error).slice(0, 500) });
+      return res.status(500).json({ error: data.error.message || JSON.stringify(data.error).slice(0, 300) });
     }
 
-    // DeepSeek R1 response format:
-    // choices[0].message.content = the actual response
-    // choices[0].message.reasoning_content = the thinking (optional, ignore)
     var text = "";
     if (data.choices && data.choices[0] && data.choices[0].message) {
       text = data.choices[0].message.content || "";
     }
 
     if (!text) {
-      // Debug: return what we got
-      return res.status(500).json({ 
-        error: "Reponse vide de DeepSeek", 
-        debug: JSON.stringify(data).slice(0, 2000) 
-      });
+      return res.status(500).json({ error: "Reponse vide. Debug: " + JSON.stringify(data).slice(0, 500) });
     }
 
-    // R1 can put <think>...</think> before the actual content
+    // Virer les tags <think> de R1
     text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 
-    // Clean markdown fences
+    // Nettoyer markdown
     var cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
 
-    // Extract JSON
+    // Extraire le JSON
     var jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) cleaned = jsonMatch[0];
 
     res.status(200).json({ text: cleaned });
   } catch (e) {
     if (e.name === 'AbortError') {
-      return res.status(504).json({ error: 'DeepSeek a mis trop de temps (>55s). Reessaie.' });
+      return res.status(504).json({ error: 'Timeout (>55s). DeepSeek R1 met du temps a reflechir, reessaie.' });
     }
     res.status(500).json({ error: e.message });
   }
 }
 
-// Vercel: augmenter le timeout de la fonction
 export const config = {
   maxDuration: 60,
 };
