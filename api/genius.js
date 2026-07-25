@@ -17,7 +17,14 @@ export default async function handler(req, res) {
 }
 
 async function runLookup(title, artist, token, res) {
-  var cleanTitle = title.replace(/[.,'!?#\(\)]/g, " ").replace(/\s+/g, " ").trim();
+  var cleanTitle = title
+    .replace(/\s*\(feat\.?[^)]*\)/gi, "")
+    .replace(/\s*\[feat\.?[^\]]*\]/gi, "")
+    .replace(/\s*ft\.?\s+.*/i, "")
+    .replace(/\s*\(bonus\s*(track)?\)/gi, "")
+    .replace(/\s*\(deluxe\)/gi, "")
+    .replace(/[.,'!?#\(\)\[\]]/g, " ")
+    .replace(/\s+/g, " ").trim();
   var dbg = { steps: [] };
   try {
     var song = await searchGenius(cleanTitle + " " + artist, artist, token);
@@ -69,6 +76,15 @@ async function runLookup(title, artist, token, res) {
       }
       if (pn.lyrics) {
         return res.status(200).json({ found: true, lyrics: pn.lyrics, source: pn.url, title: songTitle, artist: songArtist, _debug: dbg });
+      }
+      var sonar = await fetchFromSonar(songArtist, songTitle);
+      dbg.steps.push("sonar: " + (sonar ? sonar.length + " chars" : "empty"));
+      if (!sonar && (songArtist !== artist || songTitle !== title)) {
+        sonar = await fetchFromSonar(artist, title);
+        dbg.steps.push("sonar(original): " + (sonar ? sonar.length + " chars" : "empty"));
+      }
+      if (sonar) {
+        return res.status(200).json({ found: true, lyrics: sonar, source: "sonar-search", title: songTitle, artist: songArtist, _debug: dbg });
       }
       return res.status(200).json({ found: false, lyrics: "", source: geniusUrl, _debug: dbg });
     }
@@ -207,6 +223,30 @@ async function fetchFromParolesMusique(artist, title) {
     }
     return { lyrics: "", url: url, status: r.status };
   } catch(e) { return { lyrics: "", url: "", status: 0 }; }
+}
+async function fetchFromSonar(artist, title) {
+  var apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return "";
+  try {
+    var r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
+      body: JSON.stringify({
+        model: "perplexity/sonar",
+        messages: [{ role: "user", content: "Donne-moi les paroles completes de \"" + title + "\" par " + artist + ". Retourne UNIQUEMENT le texte des paroles, rien d'autre. Pas de commentaire, pas de titre, pas de source. Juste les paroles ligne par ligne." }],
+        max_tokens: 4000,
+      }),
+    });
+    if (!r.ok) return "";
+    var data = await r.json();
+    if (data.choices && data.choices[0] && data.choices[0].message) {
+      var text = (data.choices[0].message.content || "").trim();
+      text = text.replace(/^(Voici|Here are|Les paroles|Paroles de)[^\n]*\n*/i, "").trim();
+      text = text.replace(/\n*\s*(Source|Sources|Référence|Note)[^\n]*$/i, "").trim();
+      if (text.length > 100 && text.split("\n").length > 4) return text;
+    }
+  } catch(e) {}
+  return "";
 }
 function buildGeniusUrl(artist, title) {
   var slug = (artist + " " + title)
