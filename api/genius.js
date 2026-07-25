@@ -131,11 +131,7 @@ async function fetchFromGeniusHtml(geniusUrl) {
     return out;
   } catch (e) { return out; }
 }
-async function searchGenius(query, artist, token) {
-  var r = await fetch("https://api.genius.com/search?q=" + encodeURIComponent(query), { headers: { "Authorization": "Bearer " + token } });
-  var data = await r.json();
-  var hits = (data.response && data.response.hits) || [];
-  if (hits.length === 0) return null;
+function matchHits(hits, artist) {
   var artistLower = artist.toLowerCase().replace(/[^a-z0-9]/g, "");
   for (var i = 0; i < hits.length; i++) {
     if (hits[i].type === "song" && hits[i].result) {
@@ -145,5 +141,29 @@ async function searchGenius(query, artist, token) {
     }
   }
   for (var j = 0; j < hits.length; j++) { if (hits[j].type === "song" && hits[j].result) return hits[j].result; }
+  return null;
+}
+async function searchGenius(query, artist, token) {
+  try {
+    var r = await fetch("https://api.genius.com/search?q=" + encodeURIComponent(query), { headers: { "Authorization": "Bearer " + token } });
+    var data = await r.json();
+    var hits = (data.response && data.response.hits) || [];
+    var found = matchHits(hits, artist);
+    if (found) return found;
+  } catch(e) {}
+  try {
+    var r2 = await fetch("https://genius.com/api/search/song?per_page=5&q=" + encodeURIComponent(query), {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" },
+    });
+    var data2 = await r2.json();
+    var sections = (data2.response && data2.response.sections) || [];
+    for (var s = 0; s < sections.length; s++) {
+      if (sections[s].type === "song") {
+        var found2 = matchHits(sections[s].hits || [], artist);
+        if (found2) return found2;
+        break;
+      }
+    }
+  } catch(e) {}
   return null;
 }
