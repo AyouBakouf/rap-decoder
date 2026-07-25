@@ -178,7 +178,7 @@ export default function App() {
       }
       setView("loading"); setErr("");
       try {
-        var r = await callGemini(TRACKLIST_SYSTEM, album + " - " + artist, true);
+        var r = await callGemini(TRACKLIST_SYSTEM, album + " - " + artist, false, "perplexity/sonar");
         if (r.tracks && r.tracks.length) {
           tlSet(artist, album, r.tracks);
           setTracks(r.tracks); hydrate(artist, r.tracks); setSel(null); setView("list");
@@ -261,9 +261,9 @@ export default function App() {
         if (r.lines && r.lines.length) cacheSet(artist, name, { d: r });
         fetchContext(name);
       } else {
-        var FALLBACK_SYSTEM = "Tu es un traducteur rap. Utilise web_search pour trouver les paroles EXACTES de ce morceau precis (verifie bien l'artiste ET le titre, ne confonds pas avec un autre son). Puis traduis ligne par ligne.\n\nCRUCIAL: si tu ne trouves pas les paroles de CE morceau precis, ne DEVINE JAMAIS et n'invente pas des paroles plausibles. Mieux vaut {\"found\":false} que de fausses paroles.\n\nAjoute \"c\" (0-100) pour la confiance. <70 = incertain.\n\nReponds en JSON: {\"found\":true,\"lang\":\"anglais\",\"lines\":[{\"s\":\"[Verse 1]\"},{\"o\":\"ligne\",\"t\":\"traduction\",\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"ref\"}]}\n\nRegroupe les lignes courtes. \"bitch\"=meuf. \"nigga\"=laisse tel quel. Si tout est en francais: t=null, lang=francais. Si introuvable ou doute serieux: {\"found\":false,\"lines\":[],\"notes\":[]}";
+        var FALLBACK_SYSTEM = "Tu es un traducteur rap. Cherche dans tes connaissances les paroles EXACTES de ce morceau (verifie bien l'artiste ET le titre, ne confonds pas avec un autre son). Puis traduis ligne par ligne.\n\nCRUCIAL: si tu ne connais pas les paroles de CE morceau precis, ne DEVINE JAMAIS et n'invente pas des paroles plausibles. Mieux vaut {\"found\":false} que de fausses paroles.\n\nAjoute \"c\" (0-100) pour la confiance. <70 = incertain.\n\nReponds en JSON UNIQUEMENT: {\"found\":true,\"lang\":\"anglais\",\"lines\":[{\"s\":\"[Verse 1]\"},{\"o\":\"ligne\",\"t\":\"traduction\",\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"ref\"}]}\n\nRegroupe les lignes courtes. \"bitch\"=meuf. \"nigga\"=laisse tel quel. Si tout est en francais: t=null, lang=francais. Si introuvable ou doute serieux: {\"found\":false,\"lines\":[],\"notes\":[]}";
         var ctx = mode === "single" ? "" : ", album \"" + album + "\"";
-        var r2 = await callGemini(FALLBACK_SYSTEM, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ctx + ".", true);
+        var r2 = await callGemini(FALLBACK_SYSTEM, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ctx + ".", false);
         r2._source = genius.source || null;
         up({ st: "ok", d: r2 }); setDone(function(p) { return p + 1; });
         if (r2.lines && r2.lines.length) cacheSet(artist, name, { d: r2 });
@@ -657,7 +657,7 @@ export default function App() {
         <div style={S.logo}>{"翻"}</div>
         <div style={{ flex: 1 }}>
           <div style={S.title}>RAP DECODER</div>
-          <div style={{ fontSize: 8, color: "#333" }}>genius + llama 3.3 - traduction - decryptage</div>
+          <div style={{ fontSize: 8, color: "#333" }}>genius + gemini flash - traduction - decryptage</div>
         </div>
         {view !== "input" && <button onClick={reset} style={S.back}>{"<-"}</button>}
       </div>

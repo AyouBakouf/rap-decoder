@@ -1,7 +1,6 @@
 export default async function handler(req, res) {
   var apiKey = process.env.OPENROUTER_API_KEY;
-  var defaultModel = process.env.GEMINI_MODEL || "meta-llama/llama-3.3-70b-instruct";
-  var searchModel = process.env.SEARCH_MODEL || "perplexity/sonar";
+  var defaultModel = process.env.GEMINI_MODEL || "google/gemini-2.5-flash";
 
   if (req.method === 'GET') {
     if (!apiKey) return res.status(200).json({ status: "FAIL", reason: "OPENROUTER_API_KEY pas configuree" });
@@ -23,8 +22,7 @@ export default async function handler(req, res) {
 
   var system = req.body.system || "";
   var message = req.body.message || "";
-  var search = req.body.search || false;
-  var model = req.body.model || (search ? searchModel : defaultModel);
+  var model = req.body.model || defaultModel;
 
   var messages = [];
   if (system) messages.push({ role: "system", content: system });
