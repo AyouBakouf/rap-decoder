@@ -50,10 +50,25 @@ async function runLookup(title, artist, token, res) {
       dbg.steps.push("genius_scrape: " + (lyrics ? lyrics.length + " chars" : "empty") + " | http=" + sr.status + " | blocks=" + sr.blocks + " | htmlLen=" + sr.htmlLen);
     }
     if (!lyrics || lyrics.length < 20) {
-      var pn = await fetchFromParolesNet(artist, title);
-      dbg.steps.push("paroles_net: " + (pn.lyrics ? pn.lyrics.length + " chars" : "empty") + " | http=" + pn.status + " | url=" + pn.url);
+      var pn = await fetchFromParolesNet(songArtist, songTitle);
+      dbg.steps.push("paroles_net(canonical): " + (pn.lyrics ? pn.lyrics.length + " chars" : "empty") + " | url=" + pn.url);
+      if (!pn.lyrics && (songArtist !== artist || songTitle !== title)) {
+        pn = await fetchFromParolesNet(artist, title);
+        dbg.steps.push("paroles_net(original): " + (pn.lyrics ? pn.lyrics.length + " chars" : "empty") + " | url=" + pn.url);
+      }
+      if (!pn.lyrics) {
+        var pm = await fetchFromParolesMusique(songArtist, songTitle);
+        dbg.steps.push("paroles_musique(canonical): " + (pm.lyrics ? pm.lyrics.length + " chars" : "empty") + " | url=" + pm.url);
+        if (!pm.lyrics && (songArtist !== artist || songTitle !== title)) {
+          pm = await fetchFromParolesMusique(artist, title);
+          dbg.steps.push("paroles_musique(original): " + (pm.lyrics ? pm.lyrics.length + " chars" : "empty") + " | url=" + pm.url);
+        }
+        if (pm.lyrics) {
+          return res.status(200).json({ found: true, lyrics: pm.lyrics, source: pm.url, title: songTitle, artist: songArtist, _debug: dbg });
+        }
+      }
       if (pn.lyrics) {
-        return res.status(200).json({ found: true, lyrics: pn.lyrics, source: pn.url, title: title, artist: artist, _debug: dbg });
+        return res.status(200).json({ found: true, lyrics: pn.lyrics, source: pn.url, title: songTitle, artist: songArtist, _debug: dbg });
       }
       return res.status(200).json({ found: false, lyrics: "", source: geniusUrl, _debug: dbg });
     }
@@ -171,6 +186,26 @@ async function fetchFromParolesNet(artist, title) {
     });
     var text = filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
     return { lyrics: text.length > 50 ? text : "", url: url, status: r.status };
+  } catch(e) { return { lyrics: "", url: "", status: 0 }; }
+}
+async function fetchFromParolesMusique(artist, title) {
+  try {
+    var toSlug = function(s) {
+      return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    };
+    var url = "https://paroles2chansons.lemonde.fr/paroles-" + toSlug(artist) + "/paroles-" + toSlug(title) + ".html";
+    var r = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" },
+    });
+    if (!r.ok) return { lyrics: "", url: url, status: r.status };
+    var html = await r.text();
+    var jsonLd = html.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (jsonLd && jsonLd[1]) {
+      var text = jsonLd[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
+      if (text.length > 50) return { lyrics: text, url: url, status: r.status };
+    }
+    return { lyrics: "", url: url, status: r.status };
   } catch(e) { return { lyrics: "", url: "", status: 0 }; }
 }
 function buildGeniusUrl(artist, title) {
