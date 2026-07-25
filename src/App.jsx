@@ -98,31 +98,6 @@ async function callGemini(system, message, search, model, _retries) {
   }
 }
 
-// DeepSeek R1 via OpenRouter — pour les taches de raisonnement complexe (Video Research)
-async function callDeepSeek(system, message, _retries) {
-  if (_retries === undefined) _retries = 0;
-  var res = await fetch("/api/openrouter", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ system: system, message: message }),
-  });
-  var raw = await res.text();
-  var data;
-  try { data = JSON.parse(raw); } catch(e) {
-    throw new Error("Le serveur a mis trop de temps a repondre (timeout Vercel) ou a plante. Reessaie, ou simplifie ta requete.");
-  }
-  if (data.rateLimited && _retries < 3) {
-    var wait = Math.min((data.retryAfter || 30) + 5, 60);
-    await new Promise(function(r) { setTimeout(r, wait * 1000); });
-    return callDeepSeek(system, message, _retries + 1);
-  }
-  if (data.error) throw new Error(data.error);
-  var text = data.text || "";
-  var m = text.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error("Pas de JSON dans la reponse DeepSeek");
-  return JSON.parse(m[0]);
-}
-
 async function fetchLyrics(title, artist, album) {
   var res = await fetch("/api/genius", {
     method: "POST",
@@ -435,7 +410,7 @@ export default function App() {
 
       // 2 appels en parallele
       var searchPromise = callGemini(THEMATIC_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nPAROLES:\n" + allLyrics, false);
-      var suggestPromise = callDeepSeek(SUGGEST_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nALBUMS DEJA DECODES (ne pas suggerer de morceaux de ceux-la): " + decodedList);
+      var suggestPromise = callGemini(SUGGEST_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nALBUMS DEJA DECODES (ne pas suggerer de morceaux de ceux-la): " + decodedList, false, "perplexity/sonar");
 
       var results = await searchPromise.catch(function() { return { angles: [] }; });
       var suggestions = await suggestPromise.catch(function() { return { suggestions: [] }; });
@@ -568,7 +543,7 @@ export default function App() {
       var allLyrics = albumChunks.join("");
 
       if (allLyrics.length <= MAX_VIDEO_CHARS) {
-        var r = await callDeepSeek(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES (condensees, lignes cles de chaque morceau):\n" + allLyrics);
+        var r = await callGemini(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES (condensees, lignes cles de chaque morceau):\n" + allLyrics, false, "perplexity/sonar");
         if (r.suggestions) r.suggestions = r.suggestions.filter(function(s) { return !cacheGet(s.artist, s.track); });
         setVideoResults(r);
       } else {
@@ -588,7 +563,7 @@ export default function App() {
 
         var results = await Promise.all(batches.map(function(batchLyrics, idx) {
           var prefix = idx === 0 ? "" : "NOTE: ceci est le lot " + (idx + 1) + "/" + batches.length + ". Concentre-toi sur les suggestions et connexions pour ces paroles.\n\n";
-          return callDeepSeek(VIDRESEARCH_SYSTEM, prefix + "BRIEF VIDEO:\n" + videoBrief + "\n\nTOUS LES ALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES (condensees, lignes cles):\n" + batchLyrics)
+          return callGemini(VIDRESEARCH_SYSTEM, prefix + "BRIEF VIDEO:\n" + videoBrief + "\n\nTOUS LES ALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES (condensees, lignes cles):\n" + batchLyrics, false, "perplexity/sonar")
             .catch(function() { return { plan: [], suggestions: [], connexions: [] }; });
         }));
 
