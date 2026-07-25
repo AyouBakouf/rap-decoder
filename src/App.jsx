@@ -777,17 +777,6 @@ export default function App() {
                   letterSpacing: 2, textTransform: "uppercase",
                   margin: "0 12px 5px", display: "block",
                 }}>
-                  ★ meilleures barres (album)
-                </button>
-              )}
-              {mode === "album" && done === tracks.length && tracks.length > 0 && (
-                <button onClick={extractBestBars} style={{
-                  background: "transparent", border: "1px solid #2a1a10", borderRadius: 4,
-                  color: "#e05030", fontFamily: "inherit", fontSize: 9,
-                  padding: "5px 10px", cursor: "pointer",
-                  letterSpacing: 2, textTransform: "uppercase",
-                  margin: "0 12px 5px", display: "block",
-                }}>
                   ★ best bars
                 </button>
               )}
