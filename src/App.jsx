@@ -657,7 +657,7 @@ export default function App() {
         <div style={S.logo}>{"翻"}</div>
         <div style={{ flex: 1 }}>
           <div style={S.title}>RAP DECODER</div>
-          <div style={{ fontSize: 8, color: "#333" }}>genius + gemini 3 flash - traduction - decryptage</div>
+          <div style={{ fontSize: 8, color: "#333" }}>genius + llama 3.3 - traduction - decryptage</div>
         </div>
         {view !== "input" && <button onClick={reset} style={S.back}>{"<-"}</button>}
       </div>
