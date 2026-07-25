@@ -445,7 +445,7 @@ export default function App() {
 
   var closeFocus = function() { setFocusLine(null); setFocusData(null); };
 
-  var MAX_VIDEO_CHARS = 40000;
+  var MAX_VIDEO_CHARS = 80000;
   var compressTrackLyrics = function(trackName, cached) {
     if (!cached || !cached.d || !cached.d.lines) return "";
     var d = cached.d;
@@ -460,13 +460,19 @@ export default function App() {
       if (lines[i].s) continue;
       if (lines[i].o) content.push(lines[i].o);
     }
-    var max = d.context && d.context.summary ? 8 : 12;
+    var max = 20;
     if (content.length <= max) {
       result += content.join("\n") + "\n";
     } else {
-      var step = content.length / max;
-      for (var j = 0; j < max; j++) {
-        result += content[Math.floor(j * step)] + "\n";
+      var blockSize = 5;
+      var numBlocks = Math.floor(max / blockSize);
+      var spacing = Math.floor(content.length / numBlocks);
+      for (var b = 0; b < numBlocks; b++) {
+        var start = Math.min(b * spacing, content.length - blockSize);
+        for (var k = 0; k < blockSize && start + k < content.length; k++) {
+          result += content[start + k] + "\n";
+        }
+        if (b < numBlocks - 1) result += "[...]\n";
       }
     }
     return result;
