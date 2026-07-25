@@ -60,7 +60,17 @@ async function callGemini(system, message, search, model, _retries) {
   var text = data.text || "";
   var m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error("No JSON in response");
-  return JSON.parse(m[0]);
+  try {
+    return JSON.parse(m[0]);
+  } catch(jsonErr) {
+    var fixed = m[0]
+      .replace(/,\s*}/g, "}")
+      .replace(/,\s*]/g, "]")
+      .replace(/[\x00-\x1f]/g, function(c) { return c === "\n" || c === "\r" || c === "\t" ? c : ""; });
+    try { return JSON.parse(fixed); } catch(e2) {}
+    if (_retries < 2) return callGemini(system, message, search, model, (_retries || 0) + 1);
+    throw jsonErr;
+  }
 }
 
 // DeepSeek R1 via OpenRouter — pour les taches de raisonnement complexe (Video Research)
@@ -252,15 +262,20 @@ export default function App() {
       var albumParam = mode === "single" ? "" : album;
       var genius = await fetchLyrics(name, artist, albumParam);
 
+      var decoded = false;
       if (genius.found) {
-        var prompt = "Voici les paroles EXACTES de \"" + name + "\" par " + artist + " (source: lrclib).\nCopie chaque ligne originale mot pour mot dans le champ \"o\". Ne modifie rien.\n\nPAROLES:\n\n" + genius.lyrics;
-        var r = await callGemini(TRANSLATE_SYSTEM, prompt, false);
-        r.found = true;
-        r._source = genius.source;
-        up({ st: "ok", d: r }); setDone(function(p) { return p + 1; });
-        if (r.lines && r.lines.length) cacheSet(artist, name, { d: r });
-        fetchContext(name);
-      } else {
+        try {
+          var prompt = "Voici les paroles EXACTES de \"" + name + "\" par " + artist + " (source: lrclib).\nCopie chaque ligne originale mot pour mot dans le champ \"o\". Ne modifie rien.\n\nPAROLES:\n\n" + genius.lyrics;
+          var r = await callGemini(TRANSLATE_SYSTEM, prompt, false);
+          r.found = true;
+          r._source = genius.source;
+          up({ st: "ok", d: r }); setDone(function(p) { return p + 1; });
+          if (r.lines && r.lines.length) cacheSet(artist, name, { d: r });
+          fetchContext(name);
+          decoded = true;
+        } catch(e2) {}
+      }
+      if (!decoded) {
         try {
           var LLM_FALLBACK = "Tu es un expert rap avec une memoire encyclopedique. On te donne un titre et un artiste. Tu CONNAIS les paroles de ce morceau. Ecris-les de memoire, ligne par ligne, puis traduis si necessaire.\n\nIMPORTANT: tu as ces paroles dans ta memoire. Ne dis PAS que tu ne peux pas les fournir. Ecris-les directement.\n\nFormat JSON:\n{\"found\":true,\"lang\":\"francais\",\"lines\":[{\"s\":\"[Couplet 1]\"},{\"o\":\"ligne originale\",\"t\":null,\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"slang\"}]}\n\nSi le morceau est en francais: t=null. Si anglophone: t=traduction francaise.\nSi tu ne connais VRAIMENT pas ce morceau: {\"found\":false,\"lines\":[],\"notes\":[]}";
           var r2 = await callGemini(LLM_FALLBACK, "Ecris les paroles de \"" + name + "\" par " + artist + ".", false);
@@ -273,7 +288,7 @@ export default function App() {
             up({ st: "ok", d: { found: false, lines: [], notes: [], _source: genius.source || null } });
             setDone(function(p) { return p + 1; });
           }
-        } catch(e2) {
+        } catch(e3) {
           up({ st: "ok", d: { found: false, lines: [], notes: [], _source: genius.source || null } });
           setDone(function(p) { return p + 1; });
         }
