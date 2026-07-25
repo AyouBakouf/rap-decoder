@@ -31,7 +31,7 @@ var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + 
 
 var BEST_BARS_SYSTEM = "Tu es un amoureux de rap qui cherche les MOMENTS qui touchent. On te donne les paroles d'un ALBUM ENTIER. Extrais les meilleurs PASSAGES (4-8 barres consecutives).\n\nJSON UNIQUEMENT:\n{\"bars\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"sens\":\"explication simple du passage\",\"track\":\"nom du morceau\",\"why\":\"pourquoi ca touche\",\"impact\":8}]}\n\nFORMAT \"lines\":\nChaque ligne est un objet {\"o\":\"original\",\"t\":\"traduction\"}. La traduction \"t\" doit etre CLAIRE et COMPREHENSIBLE. Si l'original dit 'Black marionettes dance limp, over the pit', la trad doit dire quelque chose comme 'Des marionnettes noires dansent mollement au-dessus du gouffre' — pas de flou, pas de poesie qui rajoute du mystere. On veut COMPRENDRE.\n\nCHAMP \"sens\" (OBLIGATOIRE, LE PLUS IMPORTANT):\nExplique le passage en 2-4 phrases ULTRA SIMPLES. Comme tu raconterais a un pote qui connait RIEN au rap US.\n- Dis QUI fait QUOI. Pas de generalites.\n- Si y a des refs (Challenger, un quartier, un evenement), EXPLIQUE-LES.\n- Si y a des images poetiques, dis ce qu'elles REPRESENTENT concretement.\nEXEMPLE BON: 'Il compare sa vie d'homme noir a un astronaute qui decolle mais qui brule comme la navette Challenger. Ensuite il decrit des corps noirs brules et pendus — il fait le lien entre les lynchages et l'explosion de Challenger. Les gens bienveillants sont trop loin pour aider, comme le soleil en hiver.'\nEXEMPLE MAUVAIS: 'Un bloc d'images fortes evoquant la violence et le sacrifice.'\n\nCHAMP \"why\" (1 phrase SIMPLE):\n- Parle comme un VRAI MEC, pas comme un critique.\nEXEMPLE BON: 'En 8 lignes il connecte l'explosion de Challenger aux lynchages — personne fait ca.'\nEXEMPLE MAUVAIS: 'La juxtaposition est brutale et poignante, evoquant des themes de sacrifice.'\n- Interdit: 'puissance narrative', 'poignant', 'saisissant', 'evoquant', 'juxtaposition', 'resonance'. Parle NORMAL.\n\nSELECTION:\n- 4 a 8 passages de 4-8 barres CONSECUTIVES par album.\n- Experiences universelles: pauvrete, perte, survie, famille, rue.\n- JAMAIS de punchlines isolees ou de barres non consecutives.\n- Trie par impact decroissant.\n- TOUT en francais.";
 
-var THEMATIC_SYSTEM = "L'utilisateur donne un THEME. Tu dois:\n1. DECOMPOSER ce theme en 3 a 5 ANGLES complementaires ou opposes\n2. Pour CHAQUE angle, chercher des passages pertinents dans les paroles fournies\n\nJSON UNIQUEMENT:\n{\n\"theme_complet\":\"reformulation enrichie du theme en 1 phrase\",\n\"angles\":[\n{\n\"name\":\"nom court de l'angle (ex: 'Porter un masque')\",\n\"description\":\"1 phrase qui explique cet angle du theme\",\n\"passages\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"track\":\"morceau\",\"artist\":\"artiste\",\"album\":\"album\",\"link\":\"comment ca illustre cet angle, 1 phrase\",\"pertinence\":8}]\n}\n]\n}\n\nDECOMPOSITION DU THEME:\n- Trouve les FACES du concept: le pour/le contre, l'interieur/l'exterieur, celui qui agit/celui qui subit, la cause/la consequence.\n- Exemple pour 'assumer ses faiblesses': 'exposer ses vulnerabilites volontairement' / 'porter un masque pour cacher' / 'la vulnerabilite comme arme' / 'se faire exposer par quelqu'un' / 'la confession, l'aveu'\n- Exemple pour 'la trahison': 'se faire trahir par un proche' / 'trahir quelqu'un soi-meme' / 'le moment ou tu decouvres la trahison' / 'vivre apres la trahison' / 'la paranoia avant la preuve'\n- Les angles doivent etre CONCRETS et DIFFERENTS entre eux, pas des synonymes.\n\nPASSAGES:\n- 4-8 barres CONSECUTIVES du meme morceau pour chaque passage.\n- Un passage qui MONTRE le theme a travers une scene > un passage qui le NOMME.\n- 1 a 3 passages par angle. Certains angles peuvent avoir 0 passages si rien de pertinent dans les paroles — c'est OK, garde l'angle quand meme (passages vide) pour que l'utilisateur voie qu'il existe.\n- Traduction ligne par ligne: {\"o\":\"original\",\"t\":\"traduction claire\"}. Si francais: t=null.\n- pertinence: 1-10.\n\nSTYLE:\n- Noms d'angles courts et percutants (3-5 mots).\n- \"link\": 1 phrase simple, comme a un pote.\n- TOUT en francais.";
+var THEMATIC_SYSTEM = "L'utilisateur donne un THEME. Tu dois:\n1. DECOMPOSER ce theme en 3 a 5 ANGLES complementaires ou opposes\n2. Pour CHAQUE angle, chercher des passages pertinents dans les paroles fournies\n\nJSON UNIQUEMENT:\n{\n\"theme_complet\":\"reformulation enrichie du theme en 1 phrase\",\n\"angles\":[\n{\n\"name\":\"nom court de l'angle (ex: 'Porter un masque')\",\n\"description\":\"1 phrase qui explique cet angle du theme\",\n\"passages\":[{\"lines\":[{\"o\":\"ligne 1\",\"t\":\"trad 1\"},{\"o\":\"ligne 2\",\"t\":\"trad 2\"},{\"o\":\"ligne 3\",\"t\":\"trad 3\"},{\"o\":\"ligne 4\",\"t\":\"trad 4\"},{\"o\":\"ligne 5\",\"t\":\"trad 5\"},{\"o\":\"ligne 6\",\"t\":\"trad 6\"}],\"track\":\"morceau\",\"artist\":\"artiste\",\"album\":\"album\",\"link\":\"comment ca illustre cet angle, 1 phrase\",\"pertinence\":8}]\n}\n]\n}\n\nDECOMPOSITION DU THEME:\n- Trouve les FACES du concept: le pour/le contre, l'interieur/l'exterieur, celui qui agit/celui qui subit, la cause/la consequence.\n- Exemple pour 'assumer ses faiblesses': 'exposer ses vulnerabilites volontairement' / 'porter un masque pour cacher' / 'la vulnerabilite comme arme' / 'se faire exposer par quelqu'un' / 'la confession, l'aveu'\n- Exemple pour 'la trahison': 'se faire trahir par un proche' / 'trahir quelqu'un soi-meme' / 'le moment ou tu decouvres la trahison' / 'vivre apres la trahison' / 'la paranoia avant la preuve'\n- Les angles doivent etre CONCRETS et DIFFERENTS entre eux, pas des synonymes.\n\nPASSAGES:\n- MINIMUM 4, idealement 6-8 barres CONSECUTIVES du meme morceau pour chaque passage. JAMAIS 1-2 lignes isolees — un passage doit etre un BLOC qui a du sens seul.\n- Un passage qui MONTRE le theme a travers une scene > un passage qui le NOMME.\n- 1 a 3 passages par angle. Certains angles peuvent avoir 0 passages si rien de pertinent dans les paroles — c'est OK, garde l'angle quand meme (passages vide) pour que l'utilisateur voie qu'il existe.\n- Traduction ligne par ligne: {\"o\":\"original\",\"t\":\"traduction claire\"}. Si francais: t=null.\n- pertinence: 1-10.\n\nSTYLE:\n- Noms d'angles courts et percutants (3-5 mots).\n- \"link\": 1 phrase simple, comme a un pote.\n- TOUT en francais.";
 
 var SUGGEST_SYSTEM = "On te donne un THEME et une liste d'albums que l'utilisateur a DEJA decodes. Suggere des morceaux de rap qu'il a PAS encore decodes mais qui seraient pertinents pour ce theme.\n\nJSON UNIQUEMENT:\n{\"suggestions\":[{\"artist\":\"artiste\",\"track\":\"titre du morceau\",\"album\":\"album\",\"why\":\"pourquoi ce morceau est pertinent pour le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES:\n- 5 a 10 suggestions, triees par pertinence decroissante.\n- Ne suggere PAS de morceaux qui sont dans les albums deja decodes.\n- Privilegier des morceaux ou le theme est CENTRAL, pas juste mentionne en passant.\n- Melange des classiques et des morceaux moins connus mais pertinents.\n- Privilegier le rap US et FR underground/lyrical (Ka, billy woods, Earl, MIKE, Navy Blue, Mach-Hommy, Veust, Limsa, Infinit, Jeanjass, GAL, Alpha Wann, Dinos, Lomepal, Nekfeu, Vald, etc.) mais pas exclusivement.\n- \"why\": 1 phrase simple, en francais. Dis concretement de quoi parle le morceau par rapport au theme.\n- pertinence: 1-10. 10 = le morceau EST le theme.\n- TOUT en francais.";
 
@@ -365,8 +365,8 @@ export default function App() {
         });
       });
 
-      // Liste des albums deja decodes (pour que les suggestions les evitent)
-      var decodedList = thematicSelected.map(function(a) { return a.artist + " - " + a.album; }).join(", ");
+      var allCachedAlbums = getCachedAlbums();
+      var decodedList = allCachedAlbums.map(function(a) { return a.artist + " - " + a.album; }).join(", ");
 
       // 2 appels en parallele
       var searchPromise = callGemini(THEMATIC_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nPAROLES:\n" + allLyrics, false);
@@ -376,7 +376,10 @@ export default function App() {
       var suggestions = await suggestPromise.catch(function() { return { suggestions: [] }; });
 
       setThematicResults(results);
-      setThematicSuggestions(suggestions.suggestions || []);
+      var filteredSugs = (suggestions.suggestions || []).filter(function(s) {
+        return !cacheGet(s.artist, s.track);
+      });
+      setThematicSuggestions(filteredSugs);
     } catch (e) {
       setThematicResults([]);
       setThematicSuggestions([]);
@@ -495,6 +498,7 @@ export default function App() {
 
       if (allLyrics.length <= MAX_VIDEO_CHARS) {
         var r = await callDeepSeek(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES (condensees, lignes cles de chaque morceau):\n" + allLyrics);
+        if (r.suggestions) r.suggestions = r.suggestions.filter(function(s) { return !cacheGet(s.artist, s.track); });
         setVideoResults(r);
       } else {
         var batches = [];
@@ -530,7 +534,7 @@ export default function App() {
           if (seen[k]) return false;
           seen[k] = true;
           return true;
-        });
+        }).filter(function(s) { return !cacheGet(s.artist, s.track); });
         setVideoResults(merged);
       }
     } catch (e) {
