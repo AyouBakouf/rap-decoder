@@ -106,7 +106,11 @@ async function callDeepSeek(system, message, _retries) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ system: system, message: message }),
   });
-  var data = await res.json();
+  var raw = await res.text();
+  var data;
+  try { data = JSON.parse(raw); } catch(e) {
+    throw new Error("Le serveur a mis trop de temps a repondre (timeout Vercel) ou a plante. Reessaie, ou simplifie ta requete.");
+  }
   if (data.rateLimited && _retries < 3) {
     var wait = Math.min((data.retryAfter || 30) + 5, 60);
     await new Promise(function(r) { setTimeout(r, wait * 1000); });
