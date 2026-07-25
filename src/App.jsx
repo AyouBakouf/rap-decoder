@@ -799,35 +799,6 @@ export default function App() {
                   )}
                 </div>
               )}
-              {mode === "album" && done > 0 && (
-                <button onClick={extractAlbumPunchlines} style={{
-                  background: "transparent", border: "1px solid #2a2040", borderRadius: 4,
-                  color: "#a855f7", fontFamily: "inherit", fontSize: 9,
-                  padding: "5px 10px", cursor: "pointer",
-                  letterSpacing: 2, textTransform: "uppercase",
-                  margin: "0 12px 5px", display: "block",
-                }}>
-                  ★ best bars
-                </button>
-              )}
-              <button onClick={function() { setThematicView(true); setAlbumPlView(false); setBestBarsView(false); setVideoView(false); setSel(null); }} style={{
-                background: "transparent", border: "1px solid #1a1a2a", borderRadius: 4,
-                color: "#38bdf8", fontFamily: "inherit", fontSize: 9,
-                padding: "5px 10px", cursor: "pointer",
-                letterSpacing: 2, textTransform: "uppercase",
-                margin: "0 12px 5px", display: "block",
-              }}>
-                ◈ recherche thematique
-              </button>
-              <button onClick={function() { setVideoView(true); setThematicView(false); setAlbumPlView(false); setBestBarsView(false); setSel(null); }} style={{
-                background: "transparent", border: "1px solid #2a1a2a", borderRadius: 4,
-                color: "#c084fc", fontFamily: "inherit", fontSize: 9,
-                padding: "5px 10px", cursor: "pointer",
-                letterSpacing: 2, textTransform: "uppercase",
-                margin: "0 12px 10px", display: "block",
-              }}>
-                ▶ video research
-              </button>
               {tracks.map(function(t, i) {
                 var st = (data[t] && data[t].st) || "idle";
                 var isSel = sel === t;
@@ -847,6 +818,40 @@ export default function App() {
                   </div>
                 );
               })}
+              {mode === "album" && (
+                <div style={{ marginTop: 18, paddingTop: 12, borderTop: "1px solid #1a1a1a" }}>
+                  <div style={{ fontSize: 8, color: "#333", letterSpacing: 2, textTransform: "uppercase", margin: "0 12px 8px" }}>pour aller plus loin</div>
+                  {done > 0 && (
+                    <button onClick={extractAlbumPunchlines} style={{
+                      background: "transparent", border: "1px solid #2a2040", borderRadius: 4,
+                      color: "#a855f7", fontFamily: "inherit", fontSize: 9,
+                      padding: "5px 10px", cursor: "pointer",
+                      letterSpacing: 2, textTransform: "uppercase",
+                      margin: "0 12px 5px", display: "block",
+                    }}>
+                      ★ best bars
+                    </button>
+                  )}
+                  <button onClick={function() { setThematicView(true); setAlbumPlView(false); setBestBarsView(false); setVideoView(false); setSel(null); }} style={{
+                    background: "transparent", border: "1px solid #1a1a2a", borderRadius: 4,
+                    color: "#38bdf8", fontFamily: "inherit", fontSize: 9,
+                    padding: "5px 10px", cursor: "pointer",
+                    letterSpacing: 2, textTransform: "uppercase",
+                    margin: "0 12px 5px", display: "block",
+                  }}>
+                    ◈ recherche thematique
+                  </button>
+                  <button onClick={function() { setVideoView(true); setThematicView(false); setAlbumPlView(false); setBestBarsView(false); setSel(null); }} style={{
+                    background: "transparent", border: "1px solid #2a1a2a", borderRadius: 4,
+                    color: "#c084fc", fontFamily: "inherit", fontSize: 9,
+                    padding: "5px 10px", cursor: "pointer",
+                    letterSpacing: 2, textTransform: "uppercase",
+                    margin: "0 12px 10px", display: "block",
+                  }}>
+                    ▶ video research
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
