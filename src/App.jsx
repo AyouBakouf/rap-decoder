@@ -1379,7 +1379,9 @@ export default function App() {
                       {curD.found
                         ? <span style={Object.assign({}, S.tag, { color: "#4ade80" })}>paroles trouvees</span>
                         : <span style={Object.assign({}, S.tag, { color: "#f0c040" })}>pas de paroles</span>}
-                      {curD._source && <a href={curD._source} target="_blank" rel="noopener noreferrer" style={Object.assign({}, S.tag, { color: "#555", textDecoration: "none" })}>source</a>}
+                      {curD._source && (curD._source === "llm-recall" || curD._source === "sonar-search")
+                        ? <span style={Object.assign({}, S.tag, { color: "#f0c040" })} title="Paroles reconstruites de memoire par l'IA, pas copiees depuis une source verifiee — de petites imprecisions sont possibles.">reconstruction IA</span>
+                        : curD._source && <a href={curD._source} target="_blank" rel="noopener noreferrer" style={Object.assign({}, S.tag, { color: "#555", textDecoration: "none" })}>source</a>}
                       <span style={{ fontSize: 9, color: "#333", marginLeft: "auto" }}>Clique une ligne pour analyser</span>
                     </div>
                   </div>
