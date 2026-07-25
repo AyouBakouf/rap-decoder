@@ -442,37 +442,97 @@ export default function App() {
 
   var closeFocus = function() { setFocusLine(null); setFocusData(null); };
 
+  var MAX_VIDEO_CHARS = 40000;
+  var compressTrackLyrics = function(trackName, cached) {
+    if (!cached || !cached.d || !cached.d.lines) return "";
+    var d = cached.d;
+    var lines = d.lines;
+    var result = "\n--- " + trackName + " ---\n";
+    if (d.context) {
+      if (d.context.themes && d.context.themes.length) result += "Themes: " + d.context.themes.join(", ") + "\n";
+      if (d.context.summary) result += "Resume: " + d.context.summary + "\n";
+    }
+    var content = [];
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].s) continue;
+      if (lines[i].o) content.push(lines[i].o);
+    }
+    var max = d.context && d.context.summary ? 8 : 12;
+    if (content.length <= max) {
+      result += content.join("\n") + "\n";
+    } else {
+      var step = content.length / max;
+      for (var j = 0; j < max; j++) {
+        result += content[Math.floor(j * step)] + "\n";
+      }
+    }
+    return result;
+  };
+
   // Video Research
   var runVideoResearch = async function() {
     if (!videoBrief.trim()) return;
     setVideoLoading(true);
     setVideoResults(null);
     try {
-      // Collecter toutes les paroles decodees (tous les albums en cache)
-      var allLyrics = "";
       var decodedList = [];
       var albums = getCachedAlbums();
-      // Ajouter l'album courant si pas dans la liste
       if (mode === "album" && artist && album && done > 0) {
         var exists = albums.some(function(a) { return norm(a.artist) === norm(artist) && norm(a.album) === norm(album); });
         if (!exists) albums.unshift({ artist: artist, album: album, tracks: tracks, decoded: done });
       }
+      var albumChunks = [];
       albums.forEach(function(alb) {
-        decodedList.push(alb.artist + " - " + alb.album);
-        allLyrics += "\n\n======= " + alb.artist + " - " + alb.album + " =======\n";
+        var chunk = "\n\n======= " + alb.artist + " - " + alb.album + " =======\n";
         alb.tracks.forEach(function(t) {
           var c = cacheGet(alb.artist, t);
-          if (c && c.d && c.d.lines) {
-            allLyrics += "\n--- " + t + " ---\n";
-            c.d.lines.forEach(function(l) {
-              if (l.s) allLyrics += "\n" + l.s + "\n";
-              else if (l.o) allLyrics += l.o + "\n";
-            });
-          }
+          chunk += compressTrackLyrics(t, c);
         });
+        decodedList.push(alb.artist + " - " + alb.album);
+        albumChunks.push(chunk);
       });
-      var r = await callDeepSeek(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES:\n" + allLyrics);
-      setVideoResults(r);
+      var allLyrics = albumChunks.join("");
+
+      if (allLyrics.length <= MAX_VIDEO_CHARS) {
+        var r = await callDeepSeek(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES (condensees, lignes cles de chaque morceau):\n" + allLyrics);
+        setVideoResults(r);
+      } else {
+        var batches = [];
+        var curBatch = [];
+        var curLen = 0;
+        for (var bi = 0; bi < albumChunks.length; bi++) {
+          if (curLen + albumChunks[bi].length > MAX_VIDEO_CHARS && curBatch.length > 0) {
+            batches.push(curBatch.join(""));
+            curBatch = [];
+            curLen = 0;
+          }
+          curBatch.push(albumChunks[bi]);
+          curLen += albumChunks[bi].length;
+        }
+        if (curBatch.length > 0) batches.push(curBatch.join(""));
+
+        var results = await Promise.all(batches.map(function(batchLyrics, idx) {
+          var prefix = idx === 0 ? "" : "NOTE: ceci est le lot " + (idx + 1) + "/" + batches.length + ". Concentre-toi sur les suggestions et connexions pour ces paroles.\n\n";
+          return callDeepSeek(VIDRESEARCH_SYSTEM, prefix + "BRIEF VIDEO:\n" + videoBrief + "\n\nTOUS LES ALBUMS DECODES: " + decodedList.join(", ") + "\n\nPAROLES (condensees, lignes cles):\n" + batchLyrics)
+            .catch(function() { return { plan: [], suggestions: [], connexions: [] }; });
+        }));
+
+        var merged = { plan: [], suggestions: [], connexions: [], argument_resume: "" };
+        results.forEach(function(r) {
+          if (r.argument_resume && r.argument_resume.length > (merged.argument_resume || "").length) merged.argument_resume = r.argument_resume;
+          if (r.plan && r.plan.length > merged.plan.length) merged.plan = r.plan;
+          if (r.suggestions) merged.suggestions = merged.suggestions.concat(r.suggestions);
+          if (r.connexions) merged.connexions = merged.connexions.concat(r.connexions);
+        });
+        var seen = {};
+        merged.suggestions = merged.suggestions.filter(function(s) {
+          var k = norm(s.artist) + ":" + norm(s.track);
+          if (seen[k]) return false;
+          seen[k] = true;
+          return true;
+        });
+        setVideoResults(merged);
+      }
     } catch (e) {
       setVideoResults({ plan: [], suggestions: [], connexions: [], error: e.message });
     }
