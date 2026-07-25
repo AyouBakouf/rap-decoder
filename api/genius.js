@@ -28,6 +28,10 @@ async function runLookup(title, artist, token, res) {
     var songTitle = song ? song.title : title;
     var songArtist = (song && song.primary_artist && song.primary_artist.name) ? song.primary_artist.name : artist;
     var geniusUrl = song ? song.url : "";
+    if (!geniusUrl) {
+      geniusUrl = buildGeniusUrl(artist, cleanTitle);
+      dbg.steps.push("genius_url_guess: " + geniusUrl);
+    }
     var lyrics = await fetchFromLrclib(songArtist, songTitle);
     dbg.steps.push("lrclib(canonical): " + (lyrics ? lyrics.length + " chars" : "empty"));
     if (!lyrics && song) {
@@ -42,7 +46,7 @@ async function runLookup(title, artist, token, res) {
       lyrics = await fetchFromLyricsOvh(artist, title);
       dbg.steps.push("lyricsovh(original): " + (lyrics ? lyrics.length + " chars" : "empty"));
     }
-    if (!lyrics && geniusUrl) {
+    if (!lyrics) {
       var sr = await fetchFromGeniusHtml(geniusUrl);
       lyrics = sr.lyrics;
       dbg.steps.push("genius_scrape: " + (lyrics ? lyrics.length + " chars" : "empty") + " | http=" + sr.status + " | blocks=" + sr.blocks + " | htmlLen=" + sr.htmlLen);
@@ -132,6 +136,15 @@ async function fetchFromGeniusHtml(geniusUrl) {
     if (combined.length > 30) out.lyrics = combined;
     return out;
   } catch (e) { return out; }
+}
+function buildGeniusUrl(artist, title) {
+  var slug = (artist + " " + title)
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[''’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return "https://genius.com/" + slug + "-lyrics";
 }
 function matchHits(hits, artist) {
   var artistLower = artist.toLowerCase().replace(/[^a-z0-9]/g, "");
