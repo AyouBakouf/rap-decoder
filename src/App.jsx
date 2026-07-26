@@ -533,6 +533,25 @@ export default function App() {
   };
 
   // Video Research
+  // Remplit deterministiquement les extraits du plan a partir du cache local,
+  // sans dependre du LLM pour recopier des lignes qu'il a deja recues en contexte.
+  var fillPlanExtraitsFromCache = function(r) {
+    if (!r || !r.plan) return r;
+    r.plan = r.plan.map(function(step) {
+      if (step.extrait) return step;
+      var track = step.manque && step.manque.track;
+      var artistName = step.manque && step.manque.artist;
+      if (!track || !artistName) return step;
+      var cached = cacheGet(artistName, track);
+      if (cached && cached.d && cached.d.lines && cached.d.lines.length) {
+        var realLines = cached.d.lines.filter(function(l) { return l.o && !l.s; }).slice(0, 6);
+        if (realLines.length) return Object.assign({}, step, { extrait: { track: track, artist: artistName, lines: realLines } });
+      }
+      return step;
+    });
+    return r;
+  };
+
   var runVideoResearch = async function() {
     if (!videoBrief.trim()) return;
     setVideoLoading(true);
@@ -559,7 +578,7 @@ export default function App() {
       if (allLyrics.length <= MAX_VIDEO_CHARS) {
         var r = await callGemini(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DEJA DECODES PAR L'UTILISATEUR (juste ce qu'il a deja consulte dans l'app, PAS la portee du brief): " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES POUR CES ALBUMS SEULEMENT (condensees, lignes cles de chaque morceau) — ATTENTION, ceci ne couvre souvent qu'UN SEUL COTE d'un beef/argument, ne laisse PAS ce desequilibre de matiere biaiser ta selection vers le cote le mieux fourni:\n" + allLyrics, false, "perplexity/sonar");
         if (r.suggestions) r.suggestions = r.suggestions.filter(function(s) { return !cacheGet(s.artist, s.track); });
-        setVideoResults(r);
+        setVideoResults(fillPlanExtraitsFromCache(r));
       } else {
         var batches = [];
         var curBatch = [];
@@ -595,7 +614,7 @@ export default function App() {
           seen[k] = true;
           return true;
         }).filter(function(s) { return !cacheGet(s.artist, s.track); });
-        setVideoResults(merged);
+        setVideoResults(fillPlanExtraitsFromCache(merged));
       }
     } catch (e) {
       setVideoResults({ plan: [], suggestions: [], connexions: [], error: e.message });
