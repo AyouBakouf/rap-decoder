@@ -615,6 +615,24 @@ export default function App() {
         if (r.lines && r.lines.length) cacheSet(sug.artist, sug.track, { d: r });
         var existingTl = tlGet(sug.artist, sug.album || sug.track) || [];
         if (existingTl.indexOf(sug.track) < 0) { existingTl.push(sug.track); tlSet(sug.artist, sug.album || sug.track, existingTl); }
+        // Injecte les vraies lignes dans l'etape du plan correspondante, pour que l'extrait s'affiche sans re-generer tout le plan
+        if (r.lines && r.lines.length) {
+          var realLines = r.lines.filter(function(l) { return l.o && !l.s; }).slice(0, 6);
+          if (realLines.length) {
+            setVideoResults(function(prev) {
+              if (!prev || !prev.plan) return prev;
+              var updatedPlan = prev.plan.map(function(step) {
+                var matchesTrack = step.manque && norm(step.manque.track) === norm(sug.track) && norm(step.manque.artist || "") === norm(sug.artist || "");
+                var matchesEtape = sug.etape && step.etape === sug.etape && !step.extrait;
+                if (!step.extrait && (matchesTrack || matchesEtape)) {
+                  return Object.assign({}, step, { extrait: { track: sug.track, artist: sug.artist, lines: realLines } });
+                }
+                return step;
+              });
+              return Object.assign({}, prev, { plan: updatedPlan });
+            });
+          }
+        }
         setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "ok"; return n; });
       } else {
         setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
