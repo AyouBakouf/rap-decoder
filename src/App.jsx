@@ -727,6 +727,28 @@ export default function App() {
             ? <Inp label="Album" val={album} set={setAlbum} ph="FLYGOD" enter={go} />
             : <Inp label="Titre du morceau" val={single} set={setSingle} ph="Blackberry Marmalade" enter={go} />}
           <button onClick={go} style={S.goBtn}>Decoder</button>
+
+          <div style={{ marginTop: 28, paddingTop: 18, borderTop: "1px solid #1a1a1a" }}>
+            <div style={{ fontSize: 8, color: "#333", letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>ou directement, sans charger d'album</div>
+            <button onClick={function() { setThematicView(true); setVideoView(false); setView("list"); }} style={{
+              background: "transparent", border: "1px solid #1a1a2a", borderRadius: 4,
+              color: "#38bdf8", fontFamily: "inherit", fontSize: 9,
+              padding: "6px 12px", cursor: "pointer",
+              letterSpacing: 2, textTransform: "uppercase",
+              marginRight: 8, marginBottom: 8,
+            }}>
+              ◈ recherche thematique
+            </button>
+            <button onClick={function() { setVideoView(true); setThematicView(false); setView("list"); }} style={{
+              background: "transparent", border: "1px solid #2a1a2a", borderRadius: 4,
+              color: "#c084fc", fontFamily: "inherit", fontSize: 9,
+              padding: "6px 12px", cursor: "pointer",
+              letterSpacing: 2, textTransform: "uppercase",
+              marginBottom: 8,
+            }}>
+              ▶ video research
+            </button>
+          </div>
         </div>
       )}
 
@@ -868,7 +890,7 @@ export default function App() {
 
           {showDetail && videoView && (
             <div style={S.detail}>
-              <button onClick={function() { setVideoView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <button onClick={function() { setVideoView(false); if (!tracks.length) setView("input"); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>▶ Video Research</div>
               <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Decris ton argument de video — on trouve les extraits et on structure</div>
 
@@ -1026,7 +1048,7 @@ export default function App() {
 
           {showDetail && thematicView && !videoView && (
             <div style={S.detail}>
-              <button onClick={function() { setThematicView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <button onClick={function() { setThematicView(false); if (!tracks.length) setView("input"); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>◈ Recherche Thematique</div>
               <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Trouve des passages par theme dans tes albums decodes</div>
 
