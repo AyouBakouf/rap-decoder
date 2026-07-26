@@ -157,6 +157,7 @@ export default function App() {
   var _vr = useState(null), videoResults = _vr[0], setVideoResults = _vr[1];
   var _vl = useState(false), videoLoading = _vl[0], setVideoLoading = _vl[1];
   var _vsd = useState({}), videoSugDecoding = _vsd[0], setVideoSugDecoding = _vsd[1];
+  var _vex = useState({}), videoExpanded = _vex[0], setVideoExpanded = _vex[1];
   var _ac = useState(null), albumCtx = _ac[0], setAlbumCtx = _ac[1];
   var _acl = useState(false), albumCtxLoading = _acl[0], setAlbumCtxLoading = _acl[1];
   var stopRef = useRef(false);
@@ -614,6 +615,22 @@ export default function App() {
     setVideoLoading(false);
   };
 
+  // Ouvre/ferme le morceau complet en place dans son angle, sans toucher a la
+  // navigation principale (sel/artist) qui est couplee a l'album charge.
+  var toggleVideoExpand = async function(m) {
+    var key = m.artist + ":" + m.track;
+    var isOpen = !!videoExpanded[key];
+    if (isOpen) {
+      setVideoExpanded(function(p) { var n = Object.assign({}, p); delete n[key]; return n; });
+      return;
+    }
+    var cached = cacheGet(m.artist, m.track);
+    if (!cached || !cached.d || !cached.d.lines || !cached.d.lines.length) {
+      await decodeVideoSuggestion(m);
+    }
+    setVideoExpanded(function(p) { var n = Object.assign({}, p); n[key] = true; return n; });
+  };
+
   var decodeVideoSuggestion = async function(sug) {
     var key = sug.artist + ":" + sug.track;
     setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "load"; return n; });
@@ -979,6 +996,9 @@ export default function App() {
                               var key = m.artist + ":" + m.track;
                               var status = videoSugDecoding[key] || null;
                               var lines = (m.extrait && m.extrait.lines) || [];
+                              var isExpanded = !!videoExpanded[key];
+                              var fullCached = cacheGet(m.artist, m.track);
+                              var fullLines = (isExpanded && fullCached && fullCached.d && fullCached.d.lines) || [];
                               return (
                                 <div key={mi} style={{ marginBottom: 10, padding: "10px 12px", background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 6 }}>
                                   <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -986,7 +1006,7 @@ export default function App() {
                                       <div style={{ fontSize: 12, color: "#ddd" }}>{m.track}</div>
                                       <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{m.artist}{m.album ? " — " + m.album : ""}</div>
                                     </div>
-                                    {!lines.length && (
+                                    {!lines.length && !isExpanded && (
                                       <button
                                         onClick={function() { if (status !== "load") decodeVideoSuggestion(m); }}
                                         disabled={status === "load"}
@@ -1003,7 +1023,7 @@ export default function App() {
                                       </button>
                                     )}
                                   </div>
-                                  {lines.length > 0 && (
+                                  {!isExpanded && lines.length > 0 && (
                                     <div style={{ background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6, padding: "12px 14px", marginTop: 8 }}>
                                       {lines.map(function(ln, li) {
                                         var isObj = typeof ln === "object";
@@ -1015,11 +1035,35 @@ export default function App() {
                                         );
                                       })}
                                       {m.extrait && m.extrait.auto && (
-                                        <div style={{ fontSize: 9, color: "#555", fontStyle: "italic", marginTop: 8 }}>extrait pris au debut du morceau, pas force le passage le plus marquant — clique le morceau dans la liste pour voir tout le texte</div>
+                                        <div style={{ fontSize: 9, color: "#555", fontStyle: "italic", marginTop: 8 }}>extrait pris au debut du morceau, pas force le passage le plus marquant — regarde le morceau complet pour choisir toi-meme</div>
                                       )}
                                     </div>
                                   )}
+                                  {isExpanded && fullLines.length > 0 && (
+                                    <div style={{ background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6, padding: "12px 14px", marginTop: 8, maxHeight: 340, overflowY: "auto" }}>
+                                      {fullLines.map(function(ln, li) {
+                                        if (ln.s) return <div key={li} style={{ fontSize: 9, color: "#555", letterSpacing: 1, textTransform: "uppercase", marginTop: li ? 10 : 0, marginBottom: 4 }}>{ln.s}</div>;
+                                        return (
+                                          <div key={li} style={{ marginBottom: 6 }}>
+                                            <div style={{ fontSize: 12, color: "#e6e6e6", lineHeight: 1.5 }}>{ln.o}</div>
+                                            {ln.t && <div style={{ fontSize: 10, color: "#888", fontStyle: "italic", marginTop: 1 }}>{ln.t}</div>}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                   {m.pourquoi && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic", marginTop: 6 }}>{stripCitationMarks(m.pourquoi)}</div>}
+                                  <button
+                                    onClick={function() { toggleVideoExpand(m); }}
+                                    disabled={status === "load"}
+                                    style={{
+                                      background: "transparent", border: "none", color: "#555",
+                                      fontFamily: "inherit", fontSize: 9, padding: "6px 0 0",
+                                      cursor: status === "load" ? "default" : "pointer",
+                                      letterSpacing: 1, textTransform: "uppercase", textDecoration: "underline",
+                                    }}>
+                                    {isExpanded ? "← reduire" : status === "load" ? "..." : "voir le morceau complet"}
+                                  </button>
                                 </div>
                               );
                             })}
