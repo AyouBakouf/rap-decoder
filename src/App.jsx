@@ -70,7 +70,7 @@ var THEMATIC_SYSTEM = "L'utilisateur donne un THEME. Tu dois:\n1. DECOMPOSER ce 
 
 var SUGGEST_SYSTEM = "On te donne un THEME et une liste d'albums que l'utilisateur a DEJA decodes. Suggere des morceaux de rap qu'il a PAS encore decodes mais qui seraient pertinents pour ce theme.\n\nJSON UNIQUEMENT:\n{\"suggestions\":[{\"artist\":\"artiste\",\"track\":\"titre du morceau\",\"album\":\"album\",\"why\":\"pourquoi ce morceau est pertinent pour le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES:\n- 5 a 10 suggestions, triees par pertinence decroissante.\n- Ne suggere PAS de morceaux qui sont dans les albums deja decodes.\n- Privilegier des morceaux ou le theme est CENTRAL, pas juste mentionne en passant.\n- Melange des classiques et des morceaux moins connus mais pertinents.\n- Privilegier le rap US et FR underground/lyrical (Ka, billy woods, Earl, MIKE, Navy Blue, Mach-Hommy, Veust, Limsa, Infinit, Jeanjass, GAL, Alpha Wann, Dinos, Lomepal, Nekfeu, Vald, etc.) mais pas exclusivement.\n- \"why\": 1 phrase simple, en francais. Dis concretement de quoi parle le morceau par rapport au theme.\n- pertinence: 1-10. 10 = le morceau EST le theme.\n- TOUT en francais.";
 
-var VIDRESEARCH_SYSTEM = "L'utilisateur prepare une VIDEO. Il decrit un ARGUMENT avec des artistes et moments precis.\n\nJSON UNIQUEMENT:\n{\n\"argument_resume\":\"2-3 phrases\",\n\"plan\":[{\"etape\":1,\"role\":\"ouverture\",\"description\":\"ce que ca montre\",\"extrait\":null,\"manque\":{\"track\":\"x\",\"artist\":\"x\",\"album\":\"x\"},\"pourquoi\":\"pourquoi\"}],\n\"suggestions\":[{\"artist\":\"x\",\"track\":\"x\",\"album\":\"x\",\"why\":\"x\",\"role\":\"x\",\"etape\":1}],\n\"connexions\":[{\"de\":\"morceau A\",\"vers\":\"morceau B\",\"lien\":\"description sans fausses citations\"}]\n}\n\nAVANT TOUTE CHOSE: lis le brief et identifie les ARTISTES PRINCIPAUX. Ex: si le brief parle de Kendrick et Drake, les artistes principaux sont Kendrick Lamar et Drake. POINT.\nATTENTION: un artiste mentionne seulement dans une clause secondaire (\"dans le beef avec Drake\", \"face a Papa Doc\") est QUAND MEME un artiste principal, meme si le sujet grammatical du brief est un autre artiste. Ne le traite PAS comme un simple antagoniste de contexte — cherche VRAIMENT ses morceaux.\nCAS SPECIFIQUE DU BEEF: si le brief decrit un beef/clash entre deux artistes, meme si un seul est le \"heros\" de l'histoire, TU DOIS chercher et inclure des morceaux DES DEUX COTES. Un beef raconte avec les sons d'un seul camp est incomplet et FAUX — l'attaque de l'un et la reponse de l'autre sont toutes les deux necessaires pour que l'argument tienne debout.\n\n=== REGLE LA PLUS IMPORTANTE ===\nTOUS les extraits, TOUTES les suggestions, TOUS les morceaux dans le plan = UNIQUEMENT des morceaux des ARTISTES PRINCIPAUX identifies OU des morceaux EXPLICITEMENT NOMMES par l'utilisateur (voir exception ci-dessous). Cette regle sert a t'empecher de DERIVER vers des artistes que PERSONNE n'a demandes — elle ne sert PAS a exclure un morceau que l'utilisateur a lui-meme tape.\n\nEXCEPTION OBLIGATOIRE — MORCEAUX EXPLICITEMENT LISTES PAR L'UTILISATEUR:\nSi le brief contient une liste de titres de morceaux tapee par l'utilisateur (ex: 'Meet The Grahams, Story Of Adidon, push-ups...'), CHAQUE titre de cette liste DOIT apparaitre dans tes suggestions/plan, PEU IMPORTE l'artiste — meme si c'est un troisieme artiste comme Pusha T dans un beef Kendrick/Drake. L'utilisateur qui tape un titre precis n'est PAS une derive a bloquer, c'est une INSTRUCTION DIRECTE que tu dois executer. Ne saute AUCUN titre de cette liste. Si tu ne peux pas confirmer l'artiste exact d'un titre liste, cherche-le sur le web plutot que de l'ignorer.\n\nEXEMPLES DE CE QUI EST INTERDIT (uniquement quand l'artiste n'est PAS explicitement demande):\n- Brief parle de Kendrick/Drake sans lister de titres precis -> suggerer Jay-Z, Boldy James, Little Simz, MIKE = INTERDIT\n- Brief mentionne 8 Mile comme PARALLELE conceptuel SANS lister de morceau precis d'Eminem -> mettre Lose Yourself comme extrait = INTERDIT. 8 Mile est une REFERENCE pour expliquer le concept, PAS un artiste a inclure. Mentionne 8 Mile dans les DESCRIPTIONS, pas dans les extraits.\n- Suggerer un artiste NI nomme dans le texte NI liste en titre precis = INTERDIT, meme s il est thematiquement proche.\n\nSi le brief dit Kendrick et Drake:\n- Suggestions = sons de KENDRICK + sons de DRAKE. Rien d autre.\n- Plan = extraits de KENDRICK ou DRAKE. Rien d autre.\n- Utilise la RECHERCHE WEB pour trouver TOUS les sons pertinents de ces deux artistes.\n\n=== RECHERCHE WEB ===\n- ATTENTION AU BIAIS DE DONNEES: les \"PAROLES DISPONIBLES\" fournies dans le message viennent SEULEMENT de ce que l'utilisateur a deja decode dans l'app — ca reflete son historique de clics, PAS l'etendue reelle du brief. C'est tres souvent UN SEUL cote d'un beef/argument (ex: tout Kendrick, rien de Drake) simplement parce que l'utilisateur navigue dans l'album de Kendrick au moment ou il lance la recherche. NE CONFONDS PAS \"j'ai plein de texte pour ce cote\" avec \"cet artiste est plus important\" — c'est un artefact technique, pas un signal editorial. Pour l'artiste/le cote SANS paroles fournies, tu DOIS quand meme chercher activement sur le web et l'inclure a poids EGAL, meme si tu n'as que ta connaissance/recherche pour lui et pas de texte pre-fourni.\n- Cherche les VRAIS sons lies au brief. Pour un beef: trouve TOUS les diss des DEUX cotes.\n- Kendrick vs Drake 2024 = Like That, Push Ups, Taylor Made, euphoria, 6:16 in LA, Meet the Grahams, Family Matters, Not Like Us, The Heart Part 6, BBL Drizzy, wacced out murals.\n- Mr. Morale = United In Grief, N95, Father Time, Rich Spirit, We Cry Together, Purple Hearts, Count Me Out, Crown, Auntie Diaries, Mother I Sober, Mirror, Die Hard, Savior.\n- Cherche aussi les sons MOINS EVIDENTS (Die Hard = can I open up is it safe or not, c est de l auto-exposition aussi).\n- QUAND UNE LISTE DE MORCEAUX DE REFERENCE EST DONNEE CI-DESSUS (ex: la liste Kendrick vs Drake 2024): traite-la comme une liste a COUVRIR EN ENTIER, pas une piscine dans laquelle piocher un sous-ensemble au hasard. Si le beef ou l'album concerne correspond a une de ces listes, inclus TOUS les morceaux lists, pas juste 3 ou 4 parmi eux.\n- Mets 8-12 suggestions. Sois EXHAUSTIF sur les artistes du brief.\n\n=== CONNEXIONS ===\n- NE CITE JAMAIS de paroles sauf si trouvees sur le web et verifiees.\n- Decris le lien sans fausses citations. Ne confonds JAMAIS qui dit quoi.\n- Cherche les connexions PROFONDES: callbacks entre albums, mots reutilises, themes qui evoluent.\n- 4-8 connexions.\n\n=== PARALLELES CONCEPTUELS ===\nQuand le brief mentionne un film/concept (8 Mile, Eminem battle scene): utilise-le dans les DESCRIPTIONS et CONNEXIONS pour expliquer l argument. Mais NE METS PAS de morceaux de cet artiste/film dans le plan ou les suggestions.\n\nPLAN: 3-6 etapes. Si pas dans les paroles fournies: extrait=null, manque={track,artist,album}.\nSTYLE: parle normal. MOTS INTERDITS: met en lumiere, illustre, strategie, omnipresent, inattaquable, crucial, poignant, saisissant, resonant, transcende, incarnant. TOUT en francais.";
+var VIDRESEARCH_SYSTEM = "L'utilisateur prepare une VIDEO. Il decrit un ARGUMENT avec des artistes et moments precis.\n\nTON JOB: donner une VISION GLOBALE du terrain disponible, PAS ecrire le script de sa video a sa place. Tu n'imposes AUCUN ordre, AUCUNE structure narrative lineaire (pas de 'etape 1, 2, 3'). Tu fournis une CARTE de plusieurs angles/facettes explorables, avec les vrais morceaux qui servent chacun — l'utilisateur choisit lui-meme lesquels garder et dans quel ordre les monter. C'est LUI le realisateur, toi tu es un chercheur qui etale la matiere sur la table.\n\nJSON UNIQUEMENT:\n{\n\"argument_resume\":\"2-3 phrases\",\n\"angles\":[{\"titre\":\"nom court de l'angle/facette\",\"description\":\"1-2 phrases: ce que cet angle montre et comment il sert l'argument, SANS dire 'd'abord/ensuite/puis' — chaque angle est autonome, pas une etape\",\"morceaux\":[{\"artist\":\"x\",\"track\":\"x\",\"album\":\"x\",\"extrait\":null,\"pourquoi\":\"1 phrase: ce que ce morceau apporte a CET angle precis\"}]}],\n\"connexions\":[{\"de\":\"morceau A\",\"vers\":\"morceau B\",\"lien\":\"description sans fausses citations\"}]\n}\n\nAVANT TOUTE CHOSE: lis le brief et identifie les ARTISTES PRINCIPAUX. Ex: si le brief parle de Kendrick et Drake, les artistes principaux sont Kendrick Lamar et Drake. POINT.\nATTENTION: un artiste mentionne seulement dans une clause secondaire (\"dans le beef avec Drake\", \"face a Papa Doc\") est QUAND MEME un artiste principal, meme si le sujet grammatical du brief est un autre artiste. Ne le traite PAS comme un simple antagoniste de contexte — cherche VRAIMENT ses morceaux.\nCAS SPECIFIQUE DU BEEF: si le brief decrit un beef/clash entre deux artistes, meme si un seul est le \"heros\" de l'histoire, TU DOIS chercher et inclure des morceaux DES DEUX COTES, repartis dans les angles pertinents. Un beef raconte avec les sons d'un seul camp est incomplet et FAUX — l'attaque de l'un et la reponse de l'autre sont toutes les deux necessaires pour que l'argument tienne debout.\n\n=== ANGLES, PAS UN PLAN ===\n3 a 5 angles/facettes DIFFERENTS et INDEPENDANTS du meme argument — pas des etapes d'un recit unique. Chaque angle doit pouvoir etre compris et utilise SEUL, sans les autres. Exemples de bons angles pour un argument 'exposer ses failles neutralise l'attaque': (1) comment l'artiste construit cette exposition sur son album, (2) comment l'adversaire tente et echoue a exploiter ces failles, (3) le parallele avec une reference externe (film, autre artiste), (4) un precedent historique similaire. Chaque angle a SES PROPRES morceaux (un morceau peut apparaitre dans plusieurs angles si vraiment pertinent).\nUn morceau peut apparaitre dans PLUSIEURS angles a la fois si c'est reellement justifie — ne force pas l'unicite.\n\n=== REGLE LA PLUS IMPORTANTE ===\nTOUS les morceaux dans TOUS les angles = UNIQUEMENT des morceaux des ARTISTES PRINCIPAUX identifies OU des morceaux EXPLICITEMENT NOMMES par l'utilisateur (voir exception ci-dessous). Cette regle sert a t'empecher de DERIVER vers des artistes que PERSONNE n'a demandes — elle ne sert PAS a exclure un morceau que l'utilisateur a lui-meme tape.\n\nEXCEPTION OBLIGATOIRE — MORCEAUX EXPLICITEMENT LISTES PAR L'UTILISATEUR:\nSi le brief contient une liste de titres de morceaux tapee par l'utilisateur (ex: 'Meet The Grahams, Story Of Adidon, push-ups...'), CHAQUE titre de cette liste DOIT apparaitre dans au moins un angle, PEU IMPORTE l'artiste — meme si c'est un troisieme artiste comme Pusha T dans un beef Kendrick/Drake. L'utilisateur qui tape un titre precis n'est PAS une derive a bloquer, c'est une INSTRUCTION DIRECTE que tu dois executer. Ne saute AUCUN titre de cette liste. Si tu ne peux pas confirmer l'artiste exact d'un titre liste, cherche-le sur le web plutot que de l'ignorer.\n\nEXEMPLES DE CE QUI EST INTERDIT (uniquement quand l'artiste n'est PAS explicitement demande):\n- Brief parle de Kendrick/Drake sans lister de titres precis -> suggerer Jay-Z, Boldy James, Little Simz, MIKE = INTERDIT\n- Brief mentionne 8 Mile comme PARALLELE conceptuel SANS lister de morceau precis d'Eminem -> mettre Lose Yourself comme morceau dans un angle = INTERDIT. 8 Mile est une REFERENCE pour expliquer le concept, PAS un artiste a inclure. Mentionne 8 Mile dans les DESCRIPTIONS et CONNEXIONS, jamais comme morceau.\n- Suggerer un artiste NI nomme dans le texte NI liste en titre precis = INTERDIT, meme s il est thematiquement proche.\n\nSi le brief dit Kendrick et Drake: les morceaux repartis dans les angles = sons de KENDRICK + sons de DRAKE. Rien d autre. Utilise la RECHERCHE WEB pour trouver TOUS les sons pertinents de ces deux artistes.\n\n=== RECHERCHE WEB ===\n- ATTENTION AU BIAIS DE DONNEES: les \"PAROLES DISPONIBLES\" fournies dans le message viennent SEULEMENT de ce que l'utilisateur a deja decode dans l'app — ca reflete son historique de clics, PAS l'etendue reelle du brief. C'est tres souvent UN SEUL cote d'un beef/argument (ex: tout Kendrick, rien de Drake) simplement parce que l'utilisateur navigue dans l'album de Kendrick au moment ou il lance la recherche. NE CONFONDS PAS \"j'ai plein de texte pour ce cote\" avec \"cet artiste est plus important\" — c'est un artefact technique, pas un signal editorial. Pour l'artiste/le cote SANS paroles fournies, tu DOIS quand meme chercher activement sur le web et l'inclure a poids EGAL, meme si tu n'as que ta connaissance/recherche pour lui et pas de texte pre-fourni.\n- Cherche les VRAIS sons lies au brief. Pour un beef: trouve TOUS les diss des DEUX cotes.\n- Kendrick vs Drake 2024 = Like That, Push Ups, Taylor Made, euphoria, 6:16 in LA, Meet the Grahams, Family Matters, Not Like Us, The Heart Part 6, BBL Drizzy, wacced out murals.\n- Mr. Morale = United In Grief, N95, Father Time, Rich Spirit, We Cry Together, Purple Hearts, Count Me Out, Crown, Auntie Diaries, Mother I Sober, Mirror, Die Hard, Savior.\n- Cherche aussi les sons MOINS EVIDENTS (Die Hard = can I open up is it safe or not, c est de l auto-exposition aussi).\n- QUAND UNE LISTE DE MORCEAUX DE REFERENCE EST DONNEE CI-DESSUS (ex: la liste Kendrick vs Drake 2024): traite-la comme une liste a COUVRIR EN ENTIER, pas une piscine dans laquelle piocher un sous-ensemble au hasard. Si le beef ou l'album concerne correspond a une de ces listes, inclus TOUS les morceaux lists, pas juste 3 ou 4 parmi eux.\n- Au total, entre 8 et 15 morceaux repartis dans les angles (un morceau peut compter dans plusieurs angles). Sois EXHAUSTIF sur les artistes du brief.\n\n=== CONNEXIONS ===\n- NE CITE JAMAIS de paroles sauf si trouvees sur le web et verifiees.\n- Decris le lien sans fausses citations. Ne confonds JAMAIS qui dit quoi.\n- Cherche les connexions PROFONDES: callbacks entre albums, mots reutilises, themes qui evoluent.\n- 4-8 connexions.\n\n=== PARALLELES CONCEPTUELS ===\nQuand le brief mentionne un film/concept (8 Mile, Eminem battle scene) SANS lister de morceau precis de cet artiste: utilise-le dans les DESCRIPTIONS et CONNEXIONS pour expliquer l argument. Mais NE L'AJOUTE PAS comme morceau dans un angle.\n\nSi les paroles d'un morceau ne sont pas fournies dans le contexte: laisse \"extrait\":null sur ce morceau (artist/track/album suffisent, l'app le proposera a decoder).\nSTYLE: parle normal. MOTS INTERDITS: met en lumiere, illustre, strategie, omnipresent, inattaquable, crucial, poignant, saisissant, resonant, transcende, incarnant. TOUT en francais.";
 
 var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\",\"impact\":9}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\",\"impact\":6}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\",\"impact\":8}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur. Selectionne les lignes INSTAGRAMMABLES: celles qu'on peut poster hors contexte et qui frappent SEULES.\n- \"essentiel\": 2 a 4 lignes. Le cream absolu.\n- \"notable\": 3 a 6 lignes de qualite.\n\nTEST INSTAGRAM: si tu postes cette ligne sur Insta SANS dire de quel son c'est, est-ce que quelqu'un qui l'a jamais entendu va trouver ca fort? Si oui = bonne selection. Si la ligne a besoin du contexte du morceau pour etre impressionnante = NE LA METS PAS.\nEXEMPLE BON a selectionner: 'J'pete un plomb, l'seul noir proche qui me vengera c'est mon flingue' — le double sens frappe seul.\nEXEMPLE MAUVAIS a selectionner: 'Cinq policiers viennent me voir pour me dire: Monsieur vous avez eu raison' — c'est du storytelling, ca marche que dans le morceau. Hors contexte c'est rien.\n\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais.\n- \"why\": 1 phrase COURTE (15 mots max). Dis ce qui claque: le double sens? le wordplay? la chute?\n- types: \"craft\" / \"real\" / \"depth\" / \"subversion\"\n- \"impact\": note 1-10 la force de CETTE LIGNE PRECISE (pas le morceau entier). Ca sert a comparer des lignes de morceaux DIFFERENTS entre elles, donc sois HONNETE et discriminant: 9-10 = ligne qui marquerait meme dans un album d'un autre artiste, 7-8 = tres solide, 5-6 = correct. N'attribue pas 8+ a tout, la plupart des lignes sont 5-7.\n- Rap FR: punchlines et jeux de mots d'abord. Rap US: l'understatement compte autant.\n- INTERDIT: une ligne deja mise dans \"essentiel\" ne doit PAS reapparaitre dans \"notable\", et une ligne/paire de lignes deja utilisee dans \"multis\" ne doit PAS aussi etre copiee dans \"essentiel\" ou \"notable\". Chaque ligne du morceau n'apparait qu'UNE SEULE FOIS dans toute ta reponse, meme si elle merite plusieurs categories — choisis la categorie ou elle est la plus forte.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment entre les lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes, copiees mot pour mot)\n- \"rhymed\": pour CHAQUE ligne, la SOUS-CHAINE EXACTE qui porte la rime multi. Ce DOIT etre un extrait MOT POUR MOT de la ligne correspondante.\n\nREGLES STRICTES:\nMETHODE: ecris la TRANSCRIPTION PHONETIQUE des deux portions. Si les sons finaux ne matchent PAS, c'est PAS un multi. Dans le doute, NE METS PAS.\n\n1. Les 2+ dernieres syllabes des portions doivent sonner PAREIL. Pas 'similaire', PAREIL.\n2. INTERDIT: meme famille/racine ('soumis'/'soumission', 'sentiments'/'desensibilisation').\n3. INTERDIT: une ligne dans plus d'UN multi.\n4. Chaque \"rhymed\" = 2+ mots consecutifs, pas un mot seul.\n5. EXEMPLES FAUX (NE FAIS PAS CA):\n   'vers les interdits'/'dites-nous pourquoi' → -di/-kwa = RIME PAS\n   'fais manger'/'en argent' → -je/-an = RIME PAS\n   'etre blessant'/'respecte leur vie' → -an/-i = RIME PAS\n   'de nouveau'/'es possedee' → -vo/-de = RIME PAS\n6. EXEMPLES VRAIS:\n   'bouts d'chaines'/'propre budget' → -en/-e = sons proches, OK\n   'mon or'/'lion mort' → -on or/-on or = IDENTIQUE, OK\n   'en cavale'/'festival' → -val/-val = IDENTIQUE, OK\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\n- \"impact\": note 1-10 la force de CE schema precis, meme echelle que essentiel (9-10 rare, la plupart 5-7). Sert a comparer avec des lignes d'autres morceaux.\nSi pas de vrais multis, multis=[]. N'INVENTE PAS de fausses rimes. Mieux vaut 0 multi que 4 faux.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note, note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. TOUJOURS en francais, MEME pour un morceau anglophone (seul le champ \"o\" garde la langue originale, et \"t\" la traduction). Phrases bien construites, pas de tournures bizarres.";
 
@@ -533,21 +533,22 @@ export default function App() {
   };
 
   // Video Research
-  // Remplit deterministiquement les extraits du plan a partir du cache local,
+  // Remplit deterministiquement les extraits des angles a partir du cache local,
   // sans dependre du LLM pour recopier des lignes qu'il a deja recues en contexte.
-  var fillPlanExtraitsFromCache = function(r) {
-    if (!r || !r.plan) return r;
-    r.plan = r.plan.map(function(step) {
-      if (step.extrait) return step;
-      var track = step.manque && step.manque.track;
-      var artistName = step.manque && step.manque.artist;
-      if (!track || !artistName) return step;
-      var cached = cacheGet(artistName, track);
-      if (cached && cached.d && cached.d.lines && cached.d.lines.length) {
-        var realLines = cached.d.lines.filter(function(l) { return l.o && !l.s; }).slice(0, 6);
-        if (realLines.length) return Object.assign({}, step, { extrait: { track: track, artist: artistName, lines: realLines } });
-      }
-      return step;
+  var fillAngleExtraitsFromCache = function(r) {
+    if (!r || !r.angles) return r;
+    r.angles = r.angles.map(function(angle) {
+      if (!angle.morceaux) return angle;
+      var morceaux = angle.morceaux.map(function(m) {
+        if (m.extrait || !m.track || !m.artist) return m;
+        var cached = cacheGet(m.artist, m.track);
+        if (cached && cached.d && cached.d.lines && cached.d.lines.length) {
+          var realLines = cached.d.lines.filter(function(l) { return l.o && !l.s; }).slice(0, 6);
+          if (realLines.length) return Object.assign({}, m, { extrait: { lines: realLines } });
+        }
+        return m;
+      });
+      return Object.assign({}, angle, { morceaux: morceaux });
     });
     return r;
   };
@@ -577,8 +578,7 @@ export default function App() {
 
       if (allLyrics.length <= MAX_VIDEO_CHARS) {
         var r = await callGemini(VIDRESEARCH_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nALBUMS DEJA DECODES PAR L'UTILISATEUR (juste ce qu'il a deja consulte dans l'app, PAS la portee du brief): " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES POUR CES ALBUMS SEULEMENT (condensees, lignes cles de chaque morceau) — ATTENTION, ceci ne couvre souvent qu'UN SEUL COTE d'un beef/argument, ne laisse PAS ce desequilibre de matiere biaiser ta selection vers le cote le mieux fourni:\n" + allLyrics, false, "perplexity/sonar");
-        if (r.suggestions) r.suggestions = r.suggestions.filter(function(s) { return !cacheGet(s.artist, s.track); });
-        setVideoResults(fillPlanExtraitsFromCache(r));
+        setVideoResults(fillAngleExtraitsFromCache(r));
       } else {
         var batches = [];
         var curBatch = [];
@@ -597,24 +597,16 @@ export default function App() {
         var results = await Promise.all(batches.map(function(batchLyrics, idx) {
           var prefix = idx === 0 ? "" : "NOTE: ceci est le lot " + (idx + 1) + "/" + batches.length + ". Concentre-toi sur les suggestions et connexions pour ces paroles.\n\n";
           return callGemini(VIDRESEARCH_SYSTEM, prefix + "BRIEF VIDEO:\n" + videoBrief + "\n\nTOUS LES ALBUMS DEJA DECODES PAR L'UTILISATEUR (juste ce qu'il a deja consulte, PAS la portee du brief): " + decodedList.join(", ") + "\n\nPAROLES DISPONIBLES POUR CES ALBUMS SEULEMENT — ne laisse pas ce desequilibre de matiere biaiser ta selection vers le cote le mieux fourni:\n" + batchLyrics, false, "perplexity/sonar")
-            .catch(function() { return { plan: [], suggestions: [], connexions: [] }; });
+            .catch(function() { return { angles: [], connexions: [] }; });
         }));
 
-        var merged = { plan: [], suggestions: [], connexions: [], argument_resume: "" };
+        var merged = { angles: [], connexions: [], argument_resume: "" };
         results.forEach(function(r) {
           if (r.argument_resume && r.argument_resume.length > (merged.argument_resume || "").length) merged.argument_resume = r.argument_resume;
-          if (r.plan && r.plan.length > merged.plan.length) merged.plan = r.plan;
-          if (r.suggestions) merged.suggestions = merged.suggestions.concat(r.suggestions);
+          if (r.angles) merged.angles = merged.angles.concat(r.angles);
           if (r.connexions) merged.connexions = merged.connexions.concat(r.connexions);
         });
-        var seen = {};
-        merged.suggestions = merged.suggestions.filter(function(s) {
-          var k = norm(s.artist) + ":" + norm(s.track);
-          if (seen[k]) return false;
-          seen[k] = true;
-          return true;
-        }).filter(function(s) { return !cacheGet(s.artist, s.track); });
-        setVideoResults(fillPlanExtraitsFromCache(merged));
+        setVideoResults(fillAngleExtraitsFromCache(merged));
       }
     } catch (e) {
       setVideoResults({ plan: [], suggestions: [], connexions: [], error: e.message });
@@ -634,21 +626,23 @@ export default function App() {
         if (r.lines && r.lines.length) cacheSet(sug.artist, sug.track, { d: r });
         var existingTl = tlGet(sug.artist, sug.album || sug.track) || [];
         if (existingTl.indexOf(sug.track) < 0) { existingTl.push(sug.track); tlSet(sug.artist, sug.album || sug.track, existingTl); }
-        // Injecte les vraies lignes dans l'etape du plan correspondante, pour que l'extrait s'affiche sans re-generer tout le plan
+        // Injecte les vraies lignes dans le morceau correspondant, dans tous les angles ou il apparait
         if (r.lines && r.lines.length) {
           var realLines = r.lines.filter(function(l) { return l.o && !l.s; }).slice(0, 6);
           if (realLines.length) {
             setVideoResults(function(prev) {
-              if (!prev || !prev.plan) return prev;
-              var updatedPlan = prev.plan.map(function(step) {
-                var matchesTrack = step.manque && norm(step.manque.track) === norm(sug.track) && norm(step.manque.artist || "") === norm(sug.artist || "");
-                var matchesEtape = sug.etape && step.etape === sug.etape && !step.extrait;
-                if (!step.extrait && (matchesTrack || matchesEtape)) {
-                  return Object.assign({}, step, { extrait: { track: sug.track, artist: sug.artist, lines: realLines } });
-                }
-                return step;
+              if (!prev || !prev.angles) return prev;
+              var updatedAngles = prev.angles.map(function(angle) {
+                if (!angle.morceaux) return angle;
+                var updatedMorceaux = angle.morceaux.map(function(m) {
+                  if (!m.extrait && norm(m.track) === norm(sug.track) && norm(m.artist || "") === norm(sug.artist || "")) {
+                    return Object.assign({}, m, { extrait: { lines: realLines } });
+                  }
+                  return m;
+                });
+                return Object.assign({}, angle, { morceaux: updatedMorceaux });
               });
-              return Object.assign({}, prev, { plan: updatedPlan });
+              return Object.assign({}, prev, { angles: updatedAngles });
             });
           }
         }
@@ -970,46 +964,62 @@ export default function App() {
                     </div>
                   )}
 
-                  {videoResults.plan && videoResults.plan.length > 0 && (
+                  {videoResults.angles && videoResults.angles.length > 0 && (
                     <div style={{ marginBottom: 24 }}>
-                      <div style={{ fontSize: 9, color: "#c084fc", letterSpacing: 3, textTransform: "uppercase", marginBottom: 14, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>plan de la video</div>
-                      {videoResults.plan.map(function(step, si) {
-                        var roleColors = { ouverture: "#38bdf8", developpement: "#4ade80", pivot: "#f0c040", conclusion: "#e05030" };
-                        var rc = roleColors[step.role] || "#888";
-                        var lines = (step.extrait && step.extrait.lines) || [];
+                      <div style={{ fontSize: 9, color: "#c084fc", letterSpacing: 3, textTransform: "uppercase", marginBottom: 4, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>angles a explorer</div>
+                      <div style={{ fontSize: 9, color: "#444", marginBottom: 16, fontStyle: "italic" }}>pas un ordre impose — choisis ceux qui servent ton propos et monte-les comme tu veux</div>
+                      {videoResults.angles.map(function(angle, ai) {
+                        var angleColors = ["#38bdf8", "#4ade80", "#f0c040", "#e05030", "#c084fc"];
+                        var ac = angleColors[ai % angleColors.length];
                         return (
-                          <div key={si} style={{ marginBottom: 24, paddingLeft: 12, borderLeft: "3px solid " + rc }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                              <span style={{ fontSize: 18, fontWeight: 800, color: rc, lineHeight: 1 }}>{step.etape}</span>
-                              <span style={{ fontSize: 8, color: rc, border: "1px solid " + rc, padding: "2px 8px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 2 }}>{step.role}</span>
-                            </div>
-                            <div style={{ fontSize: 11, color: "#bbb", marginBottom: 8, lineHeight: 1.5 }}>{stripCitationMarks(step.description)}</div>
-                            {step.extrait && step.extrait.track && (
-                              <div style={{ fontSize: 9, color: "#f0c040", letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
-                                {step.extrait.track}{step.extrait.artist ? " — " + step.extrait.artist : ""}
-                              </div>
-                            )}
-                            {lines.length > 0 && (
-                              <div style={{ background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6, padding: "12px 14px", marginBottom: 8 }}>
-                                {lines.map(function(ln, li) {
-                                  var isObj = typeof ln === "object";
-                                  return (
-                                    <div key={li} style={{ marginBottom: li < lines.length - 1 ? 8 : 0 }}>
-                                      <div style={{ fontSize: 13, color: "#e6e6e6", lineHeight: 1.5 }}>{isObj ? ln.o : ln}</div>
-                                      {isObj && ln.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", marginTop: 2 }}>{ln.t}</div>}
+                          <div key={ai} style={{ marginBottom: 28, paddingLeft: 12, borderLeft: "3px solid " + ac }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: ac, marginBottom: 4 }}>{angle.titre}</div>
+                            <div style={{ fontSize: 11, color: "#999", marginBottom: 12, lineHeight: 1.5 }}>{stripCitationMarks(angle.description)}</div>
+                            {(angle.morceaux || []).map(function(m, mi) {
+                              var key = m.artist + ":" + m.track;
+                              var status = videoSugDecoding[key] || null;
+                              var lines = (m.extrait && m.extrait.lines) || [];
+                              return (
+                                <div key={mi} style={{ marginBottom: 10, padding: "10px 12px", background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 6 }}>
+                                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 12, color: "#ddd" }}>{m.track}</div>
+                                      <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{m.artist}{m.album ? " — " + m.album : ""}</div>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            {!step.extrait && step.manque && (
-                              <div style={{ padding: "10px 12px", background: "#0f0a08", border: "1px dashed #2a1a10", borderRadius: 6, marginBottom: 8 }}>
-                                <div style={{ fontSize: 9, color: "#e05030", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>morceau a decoder</div>
-                                <div style={{ fontSize: 12, color: "#ddd" }}>{step.manque.track}</div>
-                                <div style={{ fontSize: 10, color: "#666" }}>{step.manque.artist}{step.manque.album ? " — " + step.manque.album : ""}</div>
-                              </div>
-                            )}
-                            {step.pourquoi && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{stripCitationMarks(step.pourquoi)}</div>}
+                                    {!lines.length && (
+                                      <button
+                                        onClick={function() { if (status !== "load") decodeVideoSuggestion(m); }}
+                                        disabled={status === "load"}
+                                        style={{
+                                          background: "transparent", flexShrink: 0,
+                                          border: "1px solid " + (status === "err" ? "#e05030" : "#222"),
+                                          borderRadius: 4,
+                                          color: status === "err" ? "#e05030" : status === "load" ? "#555" : "#c084fc",
+                                          fontFamily: "inherit", fontSize: 9, padding: "5px 8px",
+                                          cursor: status === "load" ? "default" : "pointer",
+                                          letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap",
+                                        }}>
+                                        {status === "load" ? "..." : status === "err" ? "✕ erreur" : "decoder"}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {lines.length > 0 && (
+                                    <div style={{ background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6, padding: "12px 14px", marginTop: 8 }}>
+                                      {lines.map(function(ln, li) {
+                                        var isObj = typeof ln === "object";
+                                        return (
+                                          <div key={li} style={{ marginBottom: li < lines.length - 1 ? 8 : 0 }}>
+                                            <div style={{ fontSize: 13, color: "#e6e6e6", lineHeight: 1.5 }}>{isObj ? ln.o : ln}</div>
+                                            {isObj && ln.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", marginTop: 2 }}>{ln.t}</div>}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  {m.pourquoi && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic", marginTop: 6 }}>{stripCitationMarks(m.pourquoi)}</div>}
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       })}
@@ -1034,38 +1044,8 @@ export default function App() {
                     </div>
                   )}
 
-                  {videoResults.suggestions && videoResults.suggestions.length > 0 && (
+                  {videoResults.angles && videoResults.angles.length > 0 && Object.values(videoSugDecoding).some(function(v) { return v === "ok"; }) && (
                     <div style={{ marginBottom: 20 }}>
-                      <div style={{ fontSize: 9, color: "#c084fc", letterSpacing: 3, textTransform: "uppercase", marginBottom: 12, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>morceaux a decoder</div>
-                      {videoResults.suggestions.map(function(sug, si) {
-                        var key = sug.artist + ":" + sug.track;
-                        var status = videoSugDecoding[key] || null;
-                        return (
-                          <div key={si} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10, padding: "10px 12px", background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 6 }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12, color: "#ddd" }}>{sug.track}</div>
-                              <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{sug.artist}{sug.album ? " — " + sug.album : ""}</div>
-                              {sug.why && <div style={{ fontSize: 10, color: "#888", marginTop: 3 }}>{stripCitationMarks(sug.why)}</div>}
-                              {sug.role && <div style={{ fontSize: 9, color: "#c084fc", marginTop: 3 }}>→ {sug.role}</div>}
-                            </div>
-                            <button
-                              onClick={function() { if (status !== "load") decodeVideoSuggestion(sug); }}
-                              disabled={status === "load" || status === "ok"}
-                              style={{
-                                background: "transparent", flexShrink: 0,
-                                border: "1px solid " + (status === "ok" ? "#4ade80" : status === "err" ? "#e05030" : "#222"),
-                                borderRadius: 4,
-                                color: status === "ok" ? "#4ade80" : status === "err" ? "#e05030" : status === "load" ? "#555" : "#c084fc",
-                                fontFamily: "inherit", fontSize: 9, padding: "5px 8px",
-                                cursor: status === "load" || status === "ok" ? "default" : "pointer",
-                                letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap",
-                              }}>
-                              {status === "ok" ? "✓ decode" : status === "load" ? "..." : status === "err" ? "✕ erreur" : "decoder"}
-                            </button>
-                          </div>
-                        );
-                      })}
-                      {Object.values(videoSugDecoding).some(function(v) { return v === "ok"; }) && (
                         <button onClick={runVideoResearch} style={{
                           width: "100%", padding: "10px 0", marginTop: 8,
                           background: "#0d0a10", color: "#c084fc",
@@ -1075,7 +1055,6 @@ export default function App() {
                         }}>
                           ↻ relancer (inclure les nouveaux)
                         </button>
-                      )}
                     </div>
                   )}
                 </div>
