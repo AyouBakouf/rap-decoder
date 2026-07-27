@@ -71,11 +71,11 @@ async function runLookup(title, artist, token, res) {
           dbg.steps.push("paroles_musique(original): " + (pm.lyrics ? pm.lyrics.length + " chars" : "empty") + " | url=" + pm.url);
         }
         if (pm.lyrics) {
-          return res.status(200).json({ found: true, lyrics: cleanLyrics(pm.lyrics), source: pm.url, title: songTitle, artist: songArtist, _debug: dbg });
+          return res.status(200).json({ found: true, lyrics: cleanLyrics(pm.lyrics), source: pm.url, title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg });
         }
       }
       if (pn.lyrics) {
-        return res.status(200).json({ found: true, lyrics: cleanLyrics(pn.lyrics), source: pn.url, title: songTitle, artist: songArtist, _debug: dbg });
+        return res.status(200).json({ found: true, lyrics: cleanLyrics(pn.lyrics), source: pn.url, title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg });
       }
       var sonar = await fetchFromSonar(songArtist, songTitle);
       dbg.steps.push("sonar: " + (sonar ? sonar.length + " chars" : "empty"));
@@ -84,11 +84,11 @@ async function runLookup(title, artist, token, res) {
         dbg.steps.push("sonar(original): " + (sonar ? sonar.length + " chars" : "empty"));
       }
       if (sonar) {
-        return res.status(200).json({ found: true, lyrics: cleanLyrics(sonar), source: "sonar-search", title: songTitle, artist: songArtist, _debug: dbg });
+        return res.status(200).json({ found: true, lyrics: cleanLyrics(sonar), source: "sonar-search", title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg });
       }
       return res.status(200).json({ found: false, lyrics: "", source: geniusUrl, _debug: dbg });
     }
-    return res.status(200).json({ found: true, lyrics: cleanLyrics(lyrics), source: geniusUrl, title: songTitle, artist: songArtist, _debug: dbg });
+    return res.status(200).json({ found: true, lyrics: cleanLyrics(lyrics), source: geniusUrl, title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg });
   } catch (e) { return res.status(500).json({ error: e.message, _debug: dbg }); }
 }
 function cleanLyrics(text) {
