@@ -366,7 +366,11 @@ export default function App() {
       if (!decoded) {
         try {
           var LLM_FALLBACK = "Tu es un traducteur rap. Utilise IMPERATIVEMENT web_search pour trouver les paroles EXACTES et VERIFIEES de ce morceau (site parolier fiable, genius, azlyrics...). N'ecris JAMAIS de paroles de memoire sans les avoir verifiees par la recherche.\n\nSi la recherche ne trouve PAS de source fiable et complete pour CE morceau precis: reponds {\"found\":false,\"lines\":[],\"notes\":[]}. N'invente RIEN pour combler les trous — mieux vaut ne rien trouver que d'inventer des paroles qui n'existent pas.\n\nFormat JSON si trouve:\n{\"found\":true,\"lang\":\"francais\",\"lines\":[{\"s\":\"[Couplet 1]\"},{\"o\":\"ligne originale\",\"t\":null,\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"slang\"}]}\n\nSi le morceau est en francais: t=null pour chaque ligne. Si anglophone: t=traduction francaise.";
-          var r2 = await callGemini(LLM_FALLBACK, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", true);
+          // "search:true" seul ne fait RIEN sur le backend (api/gemini.js ignore ce flag) — sans passer
+          // explicitement le modele perplexity/sonar, ce call n'a jamais eu de vraie recherche web, meme apres
+          // les deux tentatives precedentes de corriger le prompt. C'est le vrai fix, comme partout ailleurs
+          // dans ce fichier ou une recherche reelle est necessaire (contexte album, tracklist, video research).
+          var r2 = await callGemini(LLM_FALLBACK, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", false, "perplexity/sonar");
           if (r2.found && r2.lines && r2.lines.length > 3 && !looksDegenerate(r2.lines)) {
             r2._source = "llm-recall";
             up({ st: "ok", d: r2 }); setDone(function(p) { return p + 1; });
@@ -552,7 +556,7 @@ export default function App() {
       } else {
         // Fallback: essayer via Gemini search
         var FALLBACK = "Tu es un traducteur rap. Utilise web_search pour trouver les paroles EXACTES de ce morceau. N'invente RIEN et ne complete JAMAIS de memoire si la recherche ne donne rien de fiable pour CE morceau precis — mieux vaut echouer que d'inventer des paroles. Puis traduis ligne par ligne.\nReponds en JSON: {\"found\":true,\"lang\":\"anglais\",\"lines\":[{\"s\":\"[Verse 1]\"},{\"o\":\"ligne\",\"t\":\"traduction\",\"c\":80}],\"notes\":[]}\nSi introuvable: {\"found\":false,\"lines\":[],\"notes\":[]}";
-        var r2 = await callGemini(FALLBACK, "Trouve et traduis: \"" + sug.track + "\" par " + sug.artist, true);
+        var r2 = await callGemini(FALLBACK, "Trouve et traduis: \"" + sug.track + "\" par " + sug.artist, false, "perplexity/sonar");
         if (r2.found && r2.lines && r2.lines.length && !looksDegenerate(r2.lines)) {
           cacheSet(sug.artist, sug.track, { d: r2 });
           var existingTl2 = tlGet(sug.artist, sug.album || sug.track) || [];
