@@ -183,12 +183,12 @@ async function fetchFromGeniusHtml(geniusUrl) {
     return out;
   } catch (e) { return out; }
 }
+function toSlug(s) {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 async function fetchFromParolesNet(artist, title) {
   try {
-    var toSlug = function(s) {
-      return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
-        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    };
     var url = "https://www.paroles.net/" + toSlug(artist) + "/paroles-" + toSlug(title);
     var r = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" },
@@ -221,10 +221,6 @@ async function fetchFromParolesNet(artist, title) {
 }
 async function fetchFromParolesMusique(artist, title) {
   try {
-    var toSlug = function(s) {
-      return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
-        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    };
     var url = "https://paroles2chansons.lemonde.fr/paroles-" + toSlug(artist) + "/paroles-" + toSlug(title) + ".html";
     var r = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" },

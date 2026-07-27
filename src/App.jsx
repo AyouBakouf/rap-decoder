@@ -139,12 +139,12 @@ export default function App() {
   var _k = useState(null), focusData = _k[0], setFocusData = _k[1];
   var _l = useState(false), focusLoading = _l[0], setFocusLoading = _l[1];
   var _p = useState(false), plLoading = _p[0], setPlLoading = _p[1];
-  var _ap = useState(false), albumPlView = _ap[0], setAlbumPlView = _ap[1];
+  // Panneau actif dans le detail (null = vue morceau normale via `sel`, sinon un des 4 panneaux speciaux).
+  // Remplace 4 booleans independants qu'il fallait reset a la main a chaque site d'appel.
+  var _panel = useState(null), activePanel = _panel[0], setActivePanel = _panel[1];
   var _apl = useState(false), albumPlLoading = _apl[0], setAlbumPlLoading = _apl[1];
   var _bb = useState(null), bestBars = _bb[0], setBestBars = _bb[1];
-  var _bbv = useState(false), bestBarsView = _bbv[0], setBestBarsView = _bbv[1];
   var _bbl = useState(false), bestBarsLoading = _bbl[0], setBestBarsLoading = _bbl[1];
-  var _tv = useState(false), thematicView = _tv[0], setThematicView = _tv[1];
   var _tq = useState(""), thematicQuery = _tq[0], setThematicQuery = _tq[1];
   var _tr = useState(null), thematicResults = _tr[0], setThematicResults = _tr[1];
   var _tl = useState(false), thematicLoading = _tl[0], setThematicLoading = _tl[1];
@@ -152,7 +152,6 @@ export default function App() {
   var _tc = useState(""), thematicCopied = _tc[0], setThematicCopied = _tc[1];
   var _tsu = useState(null), thematicSuggestions = _tsu[0], setThematicSuggestions = _tsu[1];
   var _tsd = useState({}), suggestDecoding = _tsd[0], setSuggestDecoding = _tsd[1];
-  var _vv = useState(false), videoView = _vv[0], setVideoView = _vv[1];
   var _vq = useState(""), videoBrief = _vq[0], setVideoBrief = _vq[1];
   var _vr = useState(null), videoResults = _vr[0], setVideoResults = _vr[1];
   var _vl = useState(false), videoLoading = _vl[0], setVideoLoading = _vl[1];
@@ -236,8 +235,8 @@ export default function App() {
 
   // Recupere le contexte (album/annee/themes/resume) en arriere-plan et le fusionne
   var fetchContext = function(name) {
-    var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
-    callGemini(CONTEXT_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtx, true)
+    var albumCtxStr = mode === "single" ? "" : " (album: " + album + ")";
+    callGemini(CONTEXT_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtxStr, true)
       .then(function(ctx) {
         var entry = dRef.current[name];
         if (!entry || entry.st !== "ok" || !entry.d) return;
@@ -346,10 +345,11 @@ export default function App() {
   var reset = function() {
     stopRef.current = true; setView("input"); setTracks([]); setData({});
     dRef.current = {}; setSel(null); setAuto(false); setDone(0);
-    setBestBars(null); setBestBarsView(false);
+    setActivePanel(null);
+    setBestBars(null);
     setAlbumCtx(null); setAlbumCtxLoading(false);
-    setThematicView(false); setThematicResults(null); setThematicSuggestions(null); setSuggestDecoding({});
-    setVideoView(false); setVideoResults(null); setVideoSugDecoding({});
+    setThematicResults(null); setThematicSuggestions(null); setSuggestDecoding({});
+    setVideoResults(null); setVideoSugDecoding({});
     sessionClear();
   };
 
@@ -363,8 +363,8 @@ export default function App() {
       for (var i = Math.max(0, lineIdx - 3); i < Math.min(curLines.length, lineIdx + 4); i++) {
         if (curLines[i].o) contextLines.push(curLines[i].o);
       }
-      var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
-      var prompt = "ARTISTE: " + artist + "\nMORCEAU: \"" + sel + "\"" + albumCtx + "\n\nLignes autour:\n" + contextLines.join("\n") + "\n\nLIGNE A ANALYSER: " + line.o + "\nTraduction: " + (line.t || line.o) + "\n\nCherche les callbacks vers d'autres morceaux/albums de " + artist + ". Compare les mots, images et themes avec sa discographie.";
+      var albumCtxStr = mode === "single" ? "" : " (album: " + album + ")";
+      var prompt = "ARTISTE: " + artist + "\nMORCEAU: \"" + sel + "\"" + albumCtxStr + "\n\nLignes autour:\n" + contextLines.join("\n") + "\n\nLIGNE A ANALYSER: " + line.o + "\nTraduction: " + (line.t || line.o) + "\n\nCherche les callbacks vers d'autres morceaux/albums de " + artist + ". Compare les mots, images et themes avec sa discographie.";
       // Utilise search pour verifier les callbacks discographiques
       var r = await callGemini(DEEP_ANALYSIS_SYSTEM, prompt, true);
       setFocusData(r);
@@ -443,11 +443,12 @@ export default function App() {
   };
 
   // Decoder un morceau suggere (artiste/titre differents de l'album courant)
-  var decodeSuggestion = async function(sug) {
+  // Cherche/traduit/cache un morceau suggere (par recherche thematique ou video research).
+  // Partagee entre les deux appelants - seul le setter de statut differe.
+  var decodeSuggestionWith = async function(sug, setStatus) {
     var key = sug.artist + ":" + sug.track;
-    setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "load"; return n; });
+    setStatus(function(p) { var n = Object.assign({}, p); n[key] = "load"; return n; });
     try {
-      // Chercher les paroles via genius
       var genius = await fetchLyrics(sug.track, sug.artist, sug.album || "");
       if (genius.found && genius.lyrics) {
         var prompt = "Voici les paroles EXACTES de \"" + sug.track + "\" par " + sug.artist + ".\nCopie chaque ligne originale mot pour mot.\n\nPAROLES:\n\n" + genius.lyrics;
@@ -461,7 +462,7 @@ export default function App() {
           existingTl.push(sug.track);
           tlSet(sug.artist, sug.album || sug.track, existingTl);
         }
-        setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "ok"; return n; });
+        setStatus(function(p) { var n = Object.assign({}, p); n[key] = "ok"; return n; });
       } else {
         // Fallback: essayer via Gemini search
         var FALLBACK = "Tu es un traducteur rap. Utilise web_search pour trouver les paroles EXACTES de ce morceau. Puis traduis ligne par ligne.\nReponds en JSON: {\"found\":true,\"lang\":\"anglais\",\"lines\":[{\"s\":\"[Verse 1]\"},{\"o\":\"ligne\",\"t\":\"traduction\",\"c\":80}],\"notes\":[]}\nSi introuvable: {\"found\":false,\"lines\":[],\"notes\":[]}";
@@ -470,15 +471,16 @@ export default function App() {
           cacheSet(sug.artist, sug.track, { d: r2 });
           var existingTl2 = tlGet(sug.artist, sug.album || sug.track) || [];
           if (existingTl2.indexOf(sug.track) < 0) { existingTl2.push(sug.track); tlSet(sug.artist, sug.album || sug.track, existingTl2); }
-          setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "ok"; return n; });
+          setStatus(function(p) { var n = Object.assign({}, p); n[key] = "ok"; return n; });
         } else {
-          setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
+          setStatus(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
         }
       }
     } catch (e) {
-      setSuggestDecoding(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
+      setStatus(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
     }
   };
+  var decodeSuggestion = function(sug) { return decodeSuggestionWith(sug, setSuggestDecoding); };
 
   // Copier pour TikTok
   var copyForTikTok = function(res) {
@@ -611,30 +613,11 @@ export default function App() {
     setVideoExpanded(function(p) { var n = Object.assign({}, p); n[key] = true; return n; });
   };
 
-  var decodeVideoSuggestion = async function(sug) {
-    var key = sug.artist + ":" + sug.track;
-    setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "load"; return n; });
-    try {
-      var genius = await fetchLyrics(sug.track, sug.artist, sug.album || "");
-      if (genius.found && genius.lyrics) {
-        var prompt = "Voici les paroles EXACTES de \"" + sug.track + "\" par " + sug.artist + ".\nCopie chaque ligne originale mot pour mot.\n\nPAROLES:\n\n" + genius.lyrics;
-        var r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
-        r.found = true;
-        if (r.lines && r.lines.length) cacheSet(sug.artist, sug.track, { d: r });
-        var existingTl = tlGet(sug.artist, sug.album || sug.track) || [];
-        if (existingTl.indexOf(sug.track) < 0) { existingTl.push(sug.track); tlSet(sug.artist, sug.album || sug.track, existingTl); }
-        setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "ok"; return n; });
-      } else {
-        setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
-      }
-    } catch (e) {
-      setVideoSugDecoding(function(p) { var n = Object.assign({}, p); n[key] = "err"; return n; });
-    }
-  };
+  var decodeVideoSuggestion = function(sug) { return decodeSuggestionWith(sug, setVideoSugDecoding); };
 
   // Best Bars: envoie TOUTES les paroles de l'album en un seul appel
   var extractBestBars = async function() {
-    setBestBarsView(true);
+    setActivePanel('bestBars');
     if (bestBars) return; // deja fait
     setBestBarsLoading(true);
     try {
@@ -667,8 +650,8 @@ export default function App() {
         if (l.s) return "\n" + l.s;
         return l.o + (l.t ? "\n(" + l.t + ")" : "");
       }).join("\n");
-      var albumCtx = mode === "single" ? "" : " (album: " + album + ")";
-      var r = await callGemini(ANALYSIS_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtx + "\n\nPAROLES (traductions entre parentheses):\n" + lyricsText, false);
+      var albumCtxStr = mode === "single" ? "" : " (album: " + album + ")";
+      var r = await callGemini(ANALYSIS_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtxStr + "\n\nPAROLES (traductions entre parentheses):\n" + lyricsText, false);
       var analysis = {
         score: r.score, score_breakdown: r.score_breakdown, score_note: r.score_note,
         essentiel: r.essentiel || [], notable: r.notable || [], multis: r.multis || [],
@@ -691,7 +674,7 @@ export default function App() {
 
   // Best of album: extrait les punchlines de tous les sons decodes (2 en parallele)
   var extractAlbumPunchlines = async function() {
-    setAlbumPlView(true);
+    setActivePanel('albumPl');
     setAlbumPlLoading(true);
     var decoded = tracks.filter(function(t) {
       var e = dRef.current[t];
@@ -707,8 +690,8 @@ export default function App() {
 
   var cur = sel && data[sel];
   var curD = cur ? cur.d : null;
-  var showSidebar = !isMobile || (!sel && !albumPlView && !bestBarsView && !thematicView && !videoView);
-  var showDetail = !isMobile || sel || albumPlView || bestBarsView || thematicView || videoView;
+  var showSidebar = !isMobile || (!sel && !activePanel);
+  var showDetail = !isMobile || sel || activePanel;
   var headerLabel = mode === "single" ? single : album;
 
   return (
@@ -738,7 +721,7 @@ export default function App() {
 
           <div style={{ marginTop: 28, paddingTop: 18, borderTop: "1px solid #1a1a1a" }}>
             <div style={{ fontSize: 8, color: "#333", letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>ou directement, sans charger d'album</div>
-            <button onClick={function() { setThematicView(true); setVideoView(false); setView("list"); }} style={{
+            <button onClick={function() { setActivePanel('thematic'); setView("list"); }} style={{
               background: "transparent", border: "1px solid #1a1a2a", borderRadius: 4,
               color: "#38bdf8", fontFamily: "inherit", fontSize: 9,
               padding: "6px 12px", cursor: "pointer",
@@ -747,7 +730,7 @@ export default function App() {
             }}>
               ◈ recherche thematique
             </button>
-            <button onClick={function() { setVideoView(true); setThematicView(false); setView("list"); }} style={{
+            <button onClick={function() { setActivePanel('video'); setView("list"); }} style={{
               background: "transparent", border: "1px solid #2a1a2a", borderRadius: 4,
               color: "#c084fc", fontFamily: "inherit", fontSize: 9,
               padding: "6px 12px", cursor: "pointer",
@@ -845,7 +828,7 @@ export default function App() {
                 var isSel = sel === t;
                 var colors = { idle: "#222", load: "#f0c040", ok: "#4ade80", err: "#ef4444" };
                 return (
-                  <div key={i} onClick={function() { setAlbumPlView(false); setBestBarsView(false); setThematicView(false); setVideoView(false); decode(t, false); }} style={Object.assign({}, S.trackRow, {
+                  <div key={i} onClick={function() { setActivePanel(null); decode(t, false); }} style={Object.assign({}, S.trackRow, {
                     background: isSel ? "#131313" : "transparent",
                     borderLeft: isSel ? "2px solid #f0c040" : "2px solid transparent",
                   })}>
@@ -873,7 +856,7 @@ export default function App() {
                       ★ best bars
                     </button>
                   )}
-                  <button onClick={function() { setThematicView(true); setAlbumPlView(false); setBestBarsView(false); setVideoView(false); setSel(null); }} style={{
+                  <button onClick={function() { setActivePanel('thematic'); setSel(null); }} style={{
                     background: "transparent", border: "1px solid #1a1a2a", borderRadius: 4,
                     color: "#38bdf8", fontFamily: "inherit", fontSize: 9,
                     padding: "5px 10px", cursor: "pointer",
@@ -882,7 +865,7 @@ export default function App() {
                   }}>
                     ◈ recherche thematique
                   </button>
-                  <button onClick={function() { setVideoView(true); setThematicView(false); setAlbumPlView(false); setBestBarsView(false); setSel(null); }} style={{
+                  <button onClick={function() { setActivePanel('video'); setSel(null); }} style={{
                     background: "transparent", border: "1px solid #2a1a2a", borderRadius: 4,
                     color: "#c084fc", fontFamily: "inherit", fontSize: 9,
                     padding: "5px 10px", cursor: "pointer",
@@ -896,9 +879,9 @@ export default function App() {
             </div>
           )}
 
-          {showDetail && videoView && (
+          {showDetail && activePanel === 'video' && (
             <div style={S.detail}>
-              <button onClick={function() { setVideoView(false); if (!tracks.length) setView("input"); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <button onClick={function() { setActivePanel(null); if (!tracks.length) setView("input"); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>▶ Video Research</div>
               <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Decris ton argument de video — on trouve les extraits et on structure</div>
 
@@ -1032,9 +1015,9 @@ export default function App() {
             </div>
           )}
 
-          {showDetail && thematicView && !videoView && (
+          {showDetail && activePanel === 'thematic' && (
             <div style={S.detail}>
-              <button onClick={function() { setThematicView(false); if (!tracks.length) setView("input"); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <button onClick={function() { setActivePanel(null); if (!tracks.length) setView("input"); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>◈ Recherche Thematique</div>
               <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Trouve des passages par theme dans tes albums decodes</div>
 
@@ -1224,9 +1207,9 @@ export default function App() {
             </div>
           )}
 
-          {showDetail && bestBarsView && !thematicView && (
+          {showDetail && activePanel === 'bestBars' && (
             <div style={S.detail}>
-              <button onClick={function() { setBestBarsView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <button onClick={function() { setActivePanel(null); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>★ Best Bars</div>
               <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 6 }}>{artist} — {album}</div>
               <div style={{ fontSize: 10, color: "#333", marginBottom: 22, fontStyle: "italic" }}>Les meilleurs passages de l'album, classes par impact.</div>
@@ -1243,7 +1226,7 @@ export default function App() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                       <span style={{ fontSize: 22, fontWeight: 800, color: impactColor, lineHeight: 1 }}>{"#" + rank}</span>
                       {barType && <span style={{ fontSize: 8, color: barTypeColor, border: "1px solid " + barTypeColor, padding: "1px 6px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 1 }}>{barType}</span>}
-                      <span onClick={function() { setBestBarsView(false); decode(bar.track, false); }} style={{ fontSize: 9, color: "#f0c040", cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" }}>{bar.track}</span>
+                      <span onClick={function() { setActivePanel(null); decode(bar.track, false); }} style={{ fontSize: 9, color: "#f0c040", cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" }}>{bar.track}</span>
                       <span style={{ fontSize: 10, color: "#555", marginLeft: "auto" }}>{bar.impact + "/10"}</span>
                     </div>
                     <div style={{ background: "#0d0d0f", border: "1px solid #1a1a22", borderRadius: 6, padding: "14px 14px", marginBottom: 10 }}>
@@ -1282,9 +1265,9 @@ export default function App() {
             </div>
           )}
 
-          {showDetail && albumPlView && !bestBarsView && (
+          {showDetail && activePanel === 'albumPl' && (
             <div style={S.detail}>
-              <button onClick={function() { setAlbumPlView(false); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <button onClick={function() { setActivePanel(null); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>★ Best of {album}</div>
               <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>{artist} — les meilleures lignes du disque</div>
               {albumPlLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><div style={Object.assign({}, S.spinner, { width: 12, height: 12, margin: 0 })} /><span style={{ fontSize: 10, color: "#555", fontStyle: "italic" }}>analyse en cours...</span></div>}
@@ -1381,7 +1364,7 @@ export default function App() {
                           )}
                           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
                             {p.type && <span style={{ fontSize: 8, color: tc, border: "1px solid " + tc, padding: "1px 6px", borderRadius: 10, textTransform: "uppercase", letterSpacing: 1, flexShrink: 0 }}>{p.type}</span>}
-                            <span onClick={function() { setAlbumPlView(false); decode(item.song, false); }} style={{ fontSize: 9, color: "#f0c040", cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" }}>{item.song}</span>
+                            <span onClick={function() { setActivePanel(null); decode(item.song, false); }} style={{ fontSize: 9, color: "#f0c040", cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" }}>{item.song}</span>
                           </div>
                           {p.why && <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>{p.why}</div>}
                         </div>
@@ -1393,7 +1376,7 @@ export default function App() {
             </div>
           )}
 
-          {showDetail && !albumPlView && sel && (
+          {showDetail && !activePanel && sel && (
             <div style={S.detail}>
               {isMobile && <button onClick={function() { setSel(null); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- morceaux"}</button>}
 
