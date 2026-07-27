@@ -65,6 +65,27 @@ function stripFakeGeniusCitation(obj) {
   };
   return walk(obj);
 }
+// Garde-fou mecanique: signature d'un LLM qui part en boucle degenerative faute de vraie source
+// (invention) plutot que de vraies paroles — soit la MEME ligne repetee mot pour mot, soit un meme
+// debut de ligne reutilise en masse (anaphore artificielle du style "I am the X, I am the Y...").
+// Rejette le resultat entier plutot que d'afficher ce genre de remplissage comme si c'etait du reel.
+function looksDegenerate(lines) {
+  if (!lines || lines.length < 6) return false;
+  var texts = lines.filter(function(l) { return l.o; }).map(function(l) { return norm(l.o); });
+  if (texts.length < 6) return false;
+  var counts = {};
+  texts.forEach(function(t) { counts[t] = (counts[t] || 0) + 1; });
+  var maxCount = Math.max.apply(null, Object.keys(counts).map(function(k) { return counts[k]; }));
+  if (maxCount >= 4) return true;
+  var prefixes = {};
+  texts.forEach(function(t) {
+    var p = t.split(/\s+/).slice(0, 3).join(" ");
+    if (p.length >= 4) prefixes[p] = (prefixes[p] || 0) + 1;
+  });
+  var prefixCounts = Object.keys(prefixes).map(function(k) { return prefixes[k]; });
+  var maxPrefix = prefixCounts.length ? Math.max.apply(null, prefixCounts) : 0;
+  return maxPrefix >= 8 && maxPrefix / texts.length >= 0.3;
+}
 function ckey(artist, name) { return CV + ":song:" + norm(artist) + ":" + norm(name); }
 function tlkey(artist, album) { return CV + ":tl:" + norm(artist) + ":" + norm(album); }
 function cacheGet(artist, name) {
@@ -331,6 +352,8 @@ export default function App() {
         try {
           var prompt = "Voici les paroles EXACTES de \"" + name + "\" par " + artist + " (source: lrclib).\nCopie chaque ligne originale mot pour mot dans le champ \"o\". Ne modifie rien.\n\nPAROLES:\n\n" + genius.lyrics;
           var r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
+          // Meme une source "reelle" peut renvoyer un scrape foireux (page spam/generee) — verifie le contenu, pas juste la source.
+          if (looksDegenerate(r.lines)) throw new Error("degenerate content from source");
           r.found = true;
           r._source = genius.source;
           r._geniusId = genius.geniusId || null;
@@ -344,7 +367,7 @@ export default function App() {
         try {
           var LLM_FALLBACK = "Tu es un traducteur rap. Utilise IMPERATIVEMENT web_search pour trouver les paroles EXACTES et VERIFIEES de ce morceau (site parolier fiable, genius, azlyrics...). N'ecris JAMAIS de paroles de memoire sans les avoir verifiees par la recherche.\n\nSi la recherche ne trouve PAS de source fiable et complete pour CE morceau precis: reponds {\"found\":false,\"lines\":[],\"notes\":[]}. N'invente RIEN pour combler les trous — mieux vaut ne rien trouver que d'inventer des paroles qui n'existent pas.\n\nFormat JSON si trouve:\n{\"found\":true,\"lang\":\"francais\",\"lines\":[{\"s\":\"[Couplet 1]\"},{\"o\":\"ligne originale\",\"t\":null,\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"slang\"}]}\n\nSi le morceau est en francais: t=null pour chaque ligne. Si anglophone: t=traduction francaise.";
           var r2 = await callGemini(LLM_FALLBACK, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", true);
-          if (r2.found && r2.lines && r2.lines.length > 3) {
+          if (r2.found && r2.lines && r2.lines.length > 3 && !looksDegenerate(r2.lines)) {
             r2._source = "llm-recall";
             up({ st: "ok", d: r2 }); setDone(function(p) { return p + 1; });
             cacheSet(artist, name, { d: r2 });
@@ -508,9 +531,14 @@ export default function App() {
     setStatus(function(p) { var n = Object.assign({}, p); n[key] = "load"; return n; });
     try {
       var genius = await fetchLyrics(sug.track, sug.artist, sug.album || "");
+      var r = null;
       if (genius.found && genius.lyrics) {
         var prompt = "Voici les paroles EXACTES de \"" + sug.track + "\" par " + sug.artist + ".\nCopie chaque ligne originale mot pour mot.\n\nPAROLES:\n\n" + genius.lyrics;
-        var r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
+        var rTry = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
+        // Meme une source "reelle" peut renvoyer un scrape foireux (page spam/generee) — verifie le contenu.
+        if (!looksDegenerate(rTry.lines)) r = rTry;
+      }
+      if (r) {
         r.found = true;
         r._source = genius.source;
         if (r.lines && r.lines.length) cacheSet(sug.artist, sug.track, { d: r });
@@ -525,7 +553,7 @@ export default function App() {
         // Fallback: essayer via Gemini search
         var FALLBACK = "Tu es un traducteur rap. Utilise web_search pour trouver les paroles EXACTES de ce morceau. N'invente RIEN et ne complete JAMAIS de memoire si la recherche ne donne rien de fiable pour CE morceau precis — mieux vaut echouer que d'inventer des paroles. Puis traduis ligne par ligne.\nReponds en JSON: {\"found\":true,\"lang\":\"anglais\",\"lines\":[{\"s\":\"[Verse 1]\"},{\"o\":\"ligne\",\"t\":\"traduction\",\"c\":80}],\"notes\":[]}\nSi introuvable: {\"found\":false,\"lines\":[],\"notes\":[]}";
         var r2 = await callGemini(FALLBACK, "Trouve et traduis: \"" + sug.track + "\" par " + sug.artist, true);
-        if (r2.found && r2.lines && r2.lines.length) {
+        if (r2.found && r2.lines && r2.lines.length && !looksDegenerate(r2.lines)) {
           cacheSet(sug.artist, sug.track, { d: r2 });
           var existingTl2 = tlGet(sug.artist, sug.album || sug.track) || [];
           if (existingTl2.indexOf(sug.track) < 0) { existingTl2.push(sug.track); tlSet(sug.artist, sug.album || sug.track, existingTl2); }
