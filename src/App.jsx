@@ -73,6 +73,9 @@ function cacheGet(artist, name) {
 function cacheSet(artist, name, payload) {
   try { localStorage.setItem(ckey(artist, name), JSON.stringify(payload)); } catch (e) {}
 }
+function cacheClear(artist, name) {
+  try { localStorage.removeItem(ckey(artist, name)); } catch (e) {}
+}
 function tlGet(artist, album) {
   try { var r = localStorage.getItem(tlkey(artist, album)); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
@@ -293,8 +296,8 @@ export default function App() {
     });
   };
 
-  var decode = useCallback(async function(name, autoMode) {
-    if (dRef.current[name] && dRef.current[name].st === "ok") {
+  var decode = useCallback(async function(name, autoMode, force) {
+    if (dRef.current[name] && dRef.current[name].st === "ok" && !force) {
       if (!autoMode) { setSel(name); prefetchNext(name); }
       return;
     }
@@ -304,8 +307,11 @@ export default function App() {
       dRef.current = next;
       setData(Object.assign({}, dRef.current));
     };
+    // Relance forcee (ex: resultat "reconstruction IA" suspect): on jette le cache local
+    // au lieu de rejouer le meme resultat fige, potentiellement invente.
+    if (force) cacheClear(artist, name);
     // Cache local: si deja decode (meme dans une autre session) -> instantane, pas d'appel API
-    var cached = cacheGet(artist, name);
+    var cached = force ? null : cacheGet(artist, name);
     if (cached && cached.d) {
       up({ st: "ok", d: cached.d });
       setDone(function(p) { return p + 1; });
@@ -1451,7 +1457,10 @@ export default function App() {
                         ? <span style={Object.assign({}, S.tag, { color: "#4ade80" })}>paroles trouvees</span>
                         : <span style={Object.assign({}, S.tag, { color: "#f0c040" })}>pas de paroles</span>}
                       {curD._source && (curD._source === "llm-recall" || curD._source === "sonar-search")
-                        ? <span style={Object.assign({}, S.tag, { color: "#f0c040" })} title="Paroles trouvees par l'IA via recherche web, pas depuis une base de paroles classique — verifie si un doute, de petites imprecisions restent possibles.">reconstruction IA</span>
+                        ? <>
+                            <span style={Object.assign({}, S.tag, { color: "#f0c040" })} title="Paroles trouvees par l'IA via recherche web, pas depuis une base de paroles classique — verifie si un doute, de petites imprecisions restent possibles.">reconstruction IA</span>
+                            <span style={Object.assign({}, S.tag, { color: "#666", cursor: "pointer", textDecoration: "underline" })} title="Rejoue la recherche a partir de zero (ignore le resultat en cache)" onClick={function() { decode(sel, false, true); }}>relancer</span>
+                          </>
                         : curD._source && <a href={curD._source} target="_blank" rel="noopener noreferrer" style={Object.assign({}, S.tag, { color: "#555", textDecoration: "none" })}>source</a>}
                       <span style={{ fontSize: 9, color: "#333", marginLeft: "auto" }}>Clique une ligne pour analyser</span>
                     </div>
