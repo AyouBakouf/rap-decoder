@@ -105,25 +105,27 @@ function cleanLyrics(text) {
 }
 async function fetchFromLrclib(artist, title) {
   try {
-    // Try exact match first
-    var url = "https://lrclib.net/api/get?artist_name=" + encodeURIComponent(artist) + "&track_name=" + encodeURIComponent(title);
-    var r = await fetch(url);
-    if (r.ok) {
-      var data = await r.json();
-      var lyrics = data.plainLyrics || "";
-      if (lyrics.length > 30) return lyrics;
-    }
-    // Try search
     var searchUrl = "https://lrclib.net/api/search?artist_name=" + encodeURIComponent(artist) + "&track_name=" + encodeURIComponent(title);
-    var r2 = await fetch(searchUrl);
-    if (r2.ok) {
-      var results = await r2.json();
-      if (results && results.length > 0) {
-        var best = results[0];
-        var lyrics2 = best.plainLyrics || "";
-        if (lyrics2.length > 30) return lyrics2;
-      }
-    }
+    var r = await fetch(searchUrl);
+    if (!r.ok) return "";
+    var results = await r.json();
+    if (!results || !results.length) return "";
+    var artistNorm = artist.toLowerCase().replace(/[^a-z0-9]/g, "");
+    var candidates = results.filter(function(res) {
+      var a = (res.artistName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return a.indexOf(artistNorm) !== -1 || artistNorm.indexOf(a) !== -1;
+    });
+    if (!candidates.length) candidates = results;
+    // lrclib a souvent plusieurs entrees dupliquees pour le meme morceau, dont des versions
+    // tronquees ou mal taguees (vu sur "2007" de JID: une entree a 767 caracteres, une autre a
+    // 7591 pour le meme artiste+titre). La plus courte est presque toujours tronquee/fausse —
+    // on prend celle avec le plus de texte plutot que la premiere renvoyee par l'API.
+    var best = candidates.reduce(function(a, b) {
+      var la = (a && a.plainLyrics) ? a.plainLyrics.length : 0;
+      var lb = (b && b.plainLyrics) ? b.plainLyrics.length : 0;
+      return lb > la ? b : a;
+    }, null);
+    if (best && best.plainLyrics && best.plainLyrics.length > 30) return best.plainLyrics;
   } catch (e) {}
   return "";
 }
