@@ -47,6 +47,15 @@ function fragmentMatchesLine(fragment, lineText) {
   var shared = a.filter(function(w) { return setB[w]; }).length;
   return shared / Math.min(a.length, b.length) >= 0.5;
 }
+// Lit une analyse de ligne en cache, avec repli sur d.lines[idx] si elle a ete sauvegardee avant le
+// fix qui rattache o/t (le JSON du modele ne les contient jamais, voir DEEP_ANALYSIS_SYSTEM/BATCH).
+function resolveLineAnalysis(d, idx) {
+  var a = d && d.lineAnalyses && d.lineAnalyses[idx];
+  if (!a) return null;
+  if (a.o) return a;
+  var raw = d.lines && d.lines[idx];
+  return raw ? Object.assign({}, a, { o: raw.o, t: raw.t }) : a;
+}
 // Garde-fou mecanique: si aucune annotation reelle n'a ete envoyee au LLM, on retire quand meme
 // toute fausse citation "annotation Genius" qu'il aurait pu inventer malgre la consigne.
 function stripFakeGeniusCitation(obj) {
@@ -457,7 +466,10 @@ export default function App() {
       if (entry && entry.st === "ok" && entry.d) {
         var existingAnalyses = entry.d.lineAnalyses || {};
         var nextAnalyses = Object.assign({}, existingAnalyses);
-        nextAnalyses[lineIdx] = r;
+        // La ligne originale/traduction ne fait PAS partie du JSON que le modele renvoie (voir
+        // DEEP_ANALYSIS_SYSTEM) — on la rattache nous-memes depuis `line`, sinon les lectures qui
+        // dependent uniquement du cache (Video Research) n'ont jamais le texte de la ligne.
+        nextAnalyses[lineIdx] = Object.assign({}, r, { o: line.o, t: line.t });
         var mergedD = Object.assign({}, entry.d, { lineAnalyses: nextAnalyses });
         var nextData = Object.assign({}, dRef.current);
         nextData[sel] = { st: "ok", d: mergedD };
@@ -543,12 +555,17 @@ export default function App() {
 
       try {
         var res = await callGemini(DEEP_ANALYSIS_BATCH_SYSTEM, prompt, true);
+        var targetByIdx = {};
+        targets.forEach(function(e) { targetByIdx[e.idx] = e; });
         var byIdx = {};
         (res.analyses || []).forEach(function(a) {
           if (typeof a.lineIdx !== "number") return;
           var clean = matchedByIdx[a.lineIdx] ? a : stripFakeGeniusCitation(a);
           if (clean.couches && clean.couches.length > 2) clean.couches = clean.couches.slice(0, 2);
-          byIdx[a.lineIdx] = clean;
+          // Meme raison que analyzeLine: le modele ne renvoie pas la ligne elle-meme, on la rattache
+          // depuis `targets` (deja connue) plutot que de lui faire re-ecrire un texte qu'il pourrait alterer.
+          var src = targetByIdx[a.lineIdx];
+          byIdx[a.lineIdx] = src ? Object.assign({}, clean, { o: src.o, t: src.t }) : clean;
         });
         // Persiste ce lot tout de suite: le progres n'est jamais perdu si un lot suivant echoue.
         var curEntry = dRef.current[sel];
@@ -721,7 +738,7 @@ export default function App() {
         if (!keys.length) return;
         var block = "\n=== " + alb.artist + " - " + t + " ===\n";
         keys.forEach(function(k) {
-          var a = c.d.lineAnalyses[k];
+          var a = resolveLineAnalysis(c.d, k);
           if (!a) return;
           block += "[ligne " + k + "] \"" + (a.o || "") + "\"" + (a.t ? " (trad: " + a.t + ")" : "") + "\n";
           if (a.sens) block += "  sens: " + a.sens + "\n";
@@ -821,7 +838,7 @@ export default function App() {
     var text = "🎬 " + videoBrief + "\n\n";
     videoOrder.forEach(function(it, i) {
       var cached = cacheGet(it.artist, it.track);
-      var a = cached && cached.d && cached.d.lineAnalyses && cached.d.lineAnalyses[it.lineIdx];
+      var a = cached && cached.d && resolveLineAnalysis(cached.d, it.lineIdx);
       if (!a) return;
       text += (i + 1) + ". " + a.o + "\n";
       if (a.t) text += "   " + a.t + "\n";
@@ -1147,7 +1164,7 @@ export default function App() {
                   </div>
                   {videoOrder.map(function(it, oi) {
                     var cached = cacheGet(it.artist, it.track);
-                    var a = cached && cached.d && cached.d.lineAnalyses && cached.d.lineAnalyses[it.lineIdx];
+                    var a = cached && cached.d && resolveLineAnalysis(cached.d, it.lineIdx);
                     if (!a) return null;
                     return (
                       <div key={it.artist + it.track + it.lineIdx}
@@ -1199,7 +1216,7 @@ export default function App() {
                             <div style={{ fontSize: 14, fontWeight: 700, color: ac, marginBottom: 12 }}>{angle.titre}</div>
                             {(angle.lignes || []).map(function(ligne, li) {
                               var cached = cacheGet(ligne.artist, ligne.track);
-                              var a = cached && cached.d && cached.d.lineAnalyses && cached.d.lineAnalyses[ligne.lineIdx];
+                              var a = cached && cached.d && resolveLineAnalysis(cached.d, ligne.lineIdx);
                               if (!a) return null;
                               var key = videoLineKey(ligne.artist, ligne.track, ligne.lineIdx);
                               var isChecked = !!videoSelected[key];
@@ -1214,10 +1231,11 @@ export default function App() {
                                     onChange={function() { toggleVideoLine(ligne.artist, ligne.track, ligne.lineIdx); }}
                                     style={{ marginTop: 3, flexShrink: 0 }} />
                                   <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 12, color: "#ddd", lineHeight: 1.5 }}>{a.o}</div>
+                                    <div style={{ fontSize: 9, color: "#666", textTransform: "lowercase" }}>{ligne.artist} — {ligne.track}</div>
+                                    <div style={{ fontSize: 13, color: "#eee", lineHeight: 1.5, marginTop: 4 }}>"{a.o}"</div>
                                     {a.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", marginTop: 2 }}>{a.t}</div>}
-                                    <div style={{ fontSize: 10, color: "#666", marginTop: 4 }}>{ligne.artist} — {ligne.track}</div>
                                     {ligne.pourquoi && <div style={{ fontSize: 10, color: ac, lineHeight: 1.4, marginTop: 6 }}>{stripCitationMarks(ligne.pourquoi)}</div>}
+                                    {a.sens && <div style={{ fontSize: 10, color: "#bbb", lineHeight: 1.4, marginTop: 4 }}><b>sens</b> {a.sens}</div>}
                                     {a.arc && <div style={{ fontSize: 10, color: "#4ade80", lineHeight: 1.4, marginTop: 4 }}><b>arc</b> {a.arc}</div>}
                                     {a.mirror && <div style={{ fontSize: 10, color: "#e05030", lineHeight: 1.4, marginTop: 4 }}><b>miroir</b> {a.mirror}</div>}
                                     {a.philo && a.philo.explication && <div style={{ fontSize: 10, color: "#38bdf8", lineHeight: 1.4, marginTop: 4 }}><b>philo ({a.philo.ref})</b> {a.philo.explication}</div>}
