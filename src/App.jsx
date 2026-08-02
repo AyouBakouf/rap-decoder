@@ -56,6 +56,16 @@ function resolveLineAnalysis(d, idx) {
   var raw = d.lines && d.lines[idx];
   return raw ? Object.assign({}, a, { o: raw.o, t: raw.t }) : a;
 }
+// Score mecanique (pas de jugement IA) pour trier les lignes d'un angle Video Research: une ligne
+// avec arc/mirror/philo/callbacks a plus de matiere qu'une ligne avec juste "sens".
+function lineRichness(a) {
+  var score = 0;
+  if (a.arc) score++;
+  if (a.mirror) score++;
+  if (a.philo && a.philo.explication) score++;
+  if (a.callbacks && a.callbacks.length) score++;
+  return score;
+}
 // Garde-fou mecanique: si aucune annotation reelle n'a ete envoyee au LLM, on retire quand meme
 // toute fausse citation "annotation Genius" qu'il aurait pu inventer malgre la consigne.
 function stripFakeGeniusCitation(obj) {
@@ -120,6 +130,11 @@ var THEMATIC_SYSTEM = "L'utilisateur donne un THEME. Tu dois:\n1. DECOMPOSER ce 
 var SUGGEST_SYSTEM = "On te donne un THEME et une liste d'albums que l'utilisateur a DEJA decodes. Suggere des morceaux de rap qu'il a PAS encore decodes mais qui seraient pertinents pour ce theme.\n\nJSON UNIQUEMENT:\n{\"suggestions\":[{\"artist\":\"artiste\",\"track\":\"titre du morceau\",\"album\":\"album\",\"why\":\"pourquoi ce morceau est pertinent pour le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES:\n- 5 a 10 suggestions, triees par pertinence decroissante.\n- Ne suggere PAS de morceaux qui sont dans les albums deja decodes.\n- Privilegier des morceaux ou le theme est CENTRAL, pas juste mentionne en passant.\n- Melange des classiques et des morceaux moins connus mais pertinents.\n- Privilegier le rap US et FR underground/lyrical (Ka, billy woods, Earl, MIKE, Navy Blue, Mach-Hommy, Veust, Limsa, Infinit, Jeanjass, GAL, Alpha Wann, Dinos, Lomepal, Nekfeu, Vald, etc.) mais pas exclusivement.\n- \"why\": 1 phrase simple, en francais. Dis concretement de quoi parle le morceau par rapport au theme.\n- pertinence: 1-10. 10 = le morceau EST le theme.\n- TOUT en francais.";
 
 var VIDEO_SCAN_SYSTEM = "Tu recois un BRIEF de video et une liste de lignes de rap DEJA ANALYSEES (chaque ligne a deja son sens, sa technique, ses couches, son arc, son miroir, son parallele philo, ses callbacks — deja verifies, tu n'as PAS a les re-analyser ni les re-ecrire).\n\nTON SEUL JOB: regrouper les lignes PERTINENTES pour ce brief par angle/theme. Tu ne choisis PAS les 'meilleures' lignes, tu ne les classes PAS par qualite, tu n'imposes AUCUN ordre narratif — tu regroupes tout ce qui est potentiellement pertinent, point. Le montage et l'ordre sont le travail de l'utilisateur, pas le tien.\n\nREGLE D'INCLUSION: sois MAXIMALEMENT inclusif. Si une ligne pourrait raisonnablement servir ce brief (meme indirectement, meme comme contre-exemple ou nuance), inclus-la. N'exclus une ligne QUE si elle n'a vraiment aucun rapport avec le brief. Ce n'est pas a toi de deviner ce que l'utilisateur va trouver 'le meilleur' — c'est son travail. Mieux vaut trop de matiere que pas assez: une ligne en trop, l'utilisateur la decoche en 1 clic. Une ligne manquante, il ne saura jamais qu'elle existait.\n\nReponds en JSON:\n{\n\"angles\":[\n{\n\"titre\":\"nom court de l'angle/theme (3-6 mots)\",\n\"lignes\":[{\"artist\":\"artiste EXACT tel que fourni\",\"track\":\"titre EXACT tel que fourni\",\"lineIdx\":12,\"pourquoi\":\"1 phrase: pourquoi cette ligne sert cet angle DE CE BRIEF precis\"}]\n}\n]\n}\n\n- \"artist\" et \"track\": copie EXACTEMENT (meme orthographe) un des morceaux fournis dans le message — n'improvise rien, ne traduis rien, ne corrige rien.\n- \"lineIdx\": EXACTEMENT le numero entre crochets [ligne N] associe a cette ligne dans le message — jamais invente, jamais approxime. Si tu n'es pas sur du numero exact: n'inclus PAS cette ligne plutot que de deviner.\n- \"pourquoi\": le lien avec CE brief precis, pas un resume de l'analyse deja fournie (qui sera affichee telle quelle a cote).\n- Une meme ligne peut apparaitre dans plusieurs angles si elle sert plusieurs facettes du brief.\n- 3 a 6 angles. Autant de lignes que necessaire par angle, PAS de maximum arbitraire.\n- Si AUCUNE ligne fournie ne sert vraiment le brief: angles=[]. N'invente pas un angle vide ou hors-sujet pour avoir l'air complet — mieux vaut peu d'angles pertinents que beaucoup de bruit.\n- N'ECRIS TOI-MEME NI sens, ni technique, ni analyse, ni traduction — ces champs existent deja pour chaque ligne et seront affiches automatiquement. Ton seul travail: regrouper par angle + expliquer le lien avec ce brief.\n\nTOUT en francais.";
+
+// Etape 2 du Video Research (apres le scan): curation finale. Le scan etale tout sans trier ni
+// choisir (voir VIDEO_SCAN_SYSTEM) — ici au contraire, l'IA identifie ce qui merite vraiment la video,
+// pour que l'utilisateur n'ait pas a fouiller toute la matiere brute lui-meme.
+var VIDEO_CURATE_SYSTEM = "Tu recois un BRIEF de video et une liste de lignes de rap DEJA ANALYSEES ET DEJA GROUPEES PAR ANGLE par un scan precedent (chaque ligne a son sens/technique/arc/mirror/philo/callbacks, deja verifies — tu n'as PAS a les re-analyser).\n\nTON JOB: la curation finale. Le scan precedent a etale toute la matiere potentiellement pertinente sans trier. C'est maintenant TOI qui identifies ce qui merite vraiment d'etre dans la video, pour que l'utilisateur n'ait pas a tout lire.\n\nReponds en JSON:\n{\n\"trouvailles\":[{\"artist\":\"...\",\"track\":\"...\",\"lineIdx\":12,\"pourquoi_fort\":\"1 phrase: qu'est-ce qui rend cette ligne/connexion remarquable\",\"lien_brief\":\"1 phrase: comment ca sert precisement CE brief\"}],\n\"essentielles\":[{\"artist\":\"...\",\"track\":\"...\",\"lineIdx\":12}]\n}\n\nCHAMP \"trouvailles\": les 3 A 5 connexions les PLUS FORTES trouvees dans TOUTE la matiere fournie — celles que l'utilisateur doit voir en premier. Pas juste \"pertinentes\", FORTES: un arc qui montre une vraie evolution, un miroir qui retourne une accusation contre son auteur, un callback qui boucle une idee entre deux morceaux, un parallele philo qui eclaire vraiment le propos. Si rien n'est vraiment fort dans la matiere fournie: mets-en moins de 5, voire aucune — n'en invente pas pour remplir le quota.\n\nCHAMP \"essentielles\": les 10 A 15 lignes que l'utilisateur devrait garder pour sa video. INCLUS les trouvailles dedans (ce sont les meilleures, donc essentielles aussi), plus les autres lignes solides. Triees par PERTINENCE POUR LE BRIEF, PAS regroupees par morceau ni par angle. Sois VRAIMENT selectif: si tu en mets 15 qui se valent toutes vaguement, l'utilisateur n'est pas plus avance qu'avec la matiere brute — vise les meilleures, pas \"toutes celles qui pourraient marcher a la rigueur\".\n\nREGLE: \"artist\", \"track\" et \"lineIdx\" doivent correspondre EXACTEMENT (meme orthographe, meme numero) a une ligne fournie dans le message — n'invente rien, ne modifie rien, ne devine pas un numero approximatif.\nSi la matiere fournie est globalement faible (rien de fort, rien qui se distingue vraiment): choisis quand meme ce qu'il y a de MOINS FAIBLE pour \"essentielles\" plutot que de forcer une fausse qualite dans \"trouvailles\" — mais ne mets jamais moins de 3 essentielles s'il y a au moins 3 lignes fournies.\n\nTOUT en francais.";
 
 var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\",\"impact\":9}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\",\"impact\":6}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\",\"impact\":8}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur. Selectionne les lignes INSTAGRAMMABLES: celles qu'on peut poster hors contexte et qui frappent SEULES.\n- \"essentiel\": 2 a 4 lignes. Le cream absolu.\n- \"notable\": 3 a 6 lignes de qualite.\n\nTEST INSTAGRAM: si tu postes cette ligne sur Insta SANS dire de quel son c'est, est-ce que quelqu'un qui l'a jamais entendu va trouver ca fort? Si oui = bonne selection. Si la ligne a besoin du contexte du morceau pour etre impressionnante = NE LA METS PAS.\nEXEMPLE BON a selectionner: 'J'pete un plomb, l'seul noir proche qui me vengera c'est mon flingue' — le double sens frappe seul.\nEXEMPLE MAUVAIS a selectionner: 'Cinq policiers viennent me voir pour me dire: Monsieur vous avez eu raison' — c'est du storytelling, ca marche que dans le morceau. Hors contexte c'est rien.\n\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais.\n- \"why\": 1 phrase COURTE (15 mots max). Dis ce qui claque: le double sens? le wordplay? la chute?\n- types: \"craft\" / \"real\" / \"depth\" / \"subversion\"\n- \"impact\": note 1-10 la force de CETTE LIGNE PRECISE (pas le morceau entier). Ca sert a comparer des lignes de morceaux DIFFERENTS entre elles, donc sois HONNETE et discriminant: 9-10 = ligne qui marquerait meme dans un album d'un autre artiste, 7-8 = tres solide, 5-6 = correct. N'attribue pas 8+ a tout, la plupart des lignes sont 5-7.\n- Rap FR: punchlines et jeux de mots d'abord. Rap US: l'understatement compte autant.\n- INTERDIT: une ligne deja mise dans \"essentiel\" ne doit PAS reapparaitre dans \"notable\", et une ligne/paire de lignes deja utilisee dans \"multis\" ne doit PAS aussi etre copiee dans \"essentiel\" ou \"notable\". Chaque ligne du morceau n'apparait qu'UNE SEULE FOIS dans toute ta reponse, meme si elle merite plusieurs categories — choisis la categorie ou elle est la plus forte.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment entre les lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes, copiees mot pour mot)\n- \"rhymed\": pour CHAQUE ligne, la SOUS-CHAINE EXACTE qui porte la rime multi. Ce DOIT etre un extrait MOT POUR MOT de la ligne correspondante.\n\nREGLES STRICTES:\nMETHODE: ecris la TRANSCRIPTION PHONETIQUE des deux portions. Si les sons finaux ne matchent PAS, c'est PAS un multi. Dans le doute, NE METS PAS.\n\n1. Les 2+ dernieres syllabes des portions doivent sonner PAREIL. Pas 'similaire', PAREIL.\n2. INTERDIT: meme famille/racine ('soumis'/'soumission', 'sentiments'/'desensibilisation').\n3. INTERDIT: une ligne dans plus d'UN multi.\n4. Chaque \"rhymed\" = 2+ mots consecutifs, pas un mot seul.\n5. EXEMPLES FAUX (NE FAIS PAS CA):\n   'vers les interdits'/'dites-nous pourquoi' → -di/-kwa = RIME PAS\n   'fais manger'/'en argent' → -je/-an = RIME PAS\n   'etre blessant'/'respecte leur vie' → -an/-i = RIME PAS\n   'de nouveau'/'es possedee' → -vo/-de = RIME PAS\n6. EXEMPLES VRAIS:\n   'bouts d'chaines'/'propre budget' → -en/-e = sons proches, OK\n   'mon or'/'lion mort' → -on or/-on or = IDENTIQUE, OK\n   'en cavale'/'festival' → -val/-val = IDENTIQUE, OK\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\n- \"impact\": note 1-10 la force de CE schema precis, meme echelle que essentiel (9-10 rare, la plupart 5-7). Sert a comparer avec des lignes d'autres morceaux.\nSi pas de vrais multis, multis=[]. N'INVENTE PAS de fausses rimes. Mieux vaut 0 multi que 4 faux.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note, note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. TOUJOURS en francais, MEME pour un morceau anglophone (seul le champ \"o\" garde la langue originale, et \"t\" la traduction). Phrases bien construites, pas de tournures bizarres.";
 
@@ -209,6 +224,11 @@ export default function App() {
   var _vsel = useState({}), videoSelected = _vsel[0], setVideoSelected = _vsel[1];
   var _vord = useState([]), videoOrder = _vord[0], setVideoOrder = _vord[1];
   var _vsc = useState(false), videoSelCopied = _vsc[0], setVideoSelCopied = _vsc[1];
+  var _vae = useState({}), videoAngleExpanded = _vae[0], setVideoAngleExpanded = _vae[1];
+  var _vas = useState({}), videoAngleShowAll = _vas[0], setVideoAngleShowAll = _vas[1];
+  var _vcu = useState(null), videoCuration = _vcu[0], setVideoCuration = _vcu[1];
+  var _vcl = useState(false), videoCurating = _vcl[0], setVideoCurating = _vcl[1];
+  var _vbe = useState(false), videoBruteExpanded = _vbe[0], setVideoBruteExpanded = _vbe[1];
   var _ac = useState(null), albumCtx = _ac[0], setAlbumCtx = _ac[1];
   var _acl = useState(false), albumCtxLoading = _acl[0], setAlbumCtxLoading = _acl[1];
   var stopRef = useRef(false);
@@ -801,6 +821,7 @@ export default function App() {
       if (allText.length <= MAX_VIDEO_CHARS) {
         var r = await callGemini(VIDEO_SCAN_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nLIGNES DEJA ANALYSEES:\n" + allText, false);
         setVideoResults(r);
+        runVideoCurate(r.angles);
       } else {
         var batches = [];
         var curBatch = [];
@@ -823,11 +844,69 @@ export default function App() {
         var merged = { angles: [] };
         results.forEach(function(r) { if (r.angles) merged.angles = merged.angles.concat(r.angles); });
         setVideoResults(merged);
+        runVideoCurate(merged.angles);
       }
     } catch (e) {
       setVideoResults({ angles: [], error: e.message });
     }
     setVideoLoading(false);
+  };
+
+  // Etape 1.5 (automatique apres le scan): curation. Contrairement au scan qui n'exclut presque
+  // rien, ici l'IA choisit vraiment — "trouvailles" + "essentielles" pre-cochees. L'utilisateur
+  // valide/ajuste plutot que de partir de zero; la matiere brute du scan reste dispo en dessous.
+  var runVideoCurate = async function(angles) {
+    setVideoCurating(true);
+    setVideoCuration(null);
+    try {
+      var allItems = [];
+      (angles || []).forEach(function(angle) {
+        (angle.lignes || []).forEach(function(ligne) {
+          var cached = cacheGet(ligne.artist, ligne.track);
+          var a = cached && cached.d && resolveLineAnalysis(cached.d, ligne.lineIdx);
+          if (a) allItems.push({ ligne: ligne, angleTitre: angle.titre, a: a });
+        });
+      });
+      if (!allItems.length) { setVideoCurating(false); return; }
+      // Priorite mecanique aux lignes les plus riches si tout ne tient pas dans un seul appel —
+      // la curation doit voir l'ensemble pour comparer, donc pas de multi-lots ici, juste une coupe.
+      allItems.sort(function(x, y) { return lineRichness(y.a) - lineRichness(x.a); });
+
+      var MAX_CURATE_CHARS = 60000;
+      var blocks = [];
+      var total = 0;
+      for (var i = 0; i < allItems.length; i++) {
+        var it = allItems[i];
+        var block = "[" + it.ligne.artist + " | " + it.ligne.track + " | ligne " + it.ligne.lineIdx + "] \"" + it.a.o + "\"\n" +
+          "  angle: " + it.angleTitre + "\n" +
+          (it.ligne.pourquoi ? "  pourquoi (scan): " + it.ligne.pourquoi + "\n" : "") +
+          (it.a.sens ? "  sens: " + it.a.sens + "\n" : "") +
+          (it.a.arc ? "  arc: " + it.a.arc + "\n" : "") +
+          (it.a.mirror ? "  mirror: " + it.a.mirror + "\n" : "") +
+          (it.a.philo && it.a.philo.explication ? "  philo: " + it.a.philo.explication + "\n" : "") +
+          (it.a.callbacks && it.a.callbacks.length ? "  callbacks: " + it.a.callbacks.map(function(cb) { return cb.album; }).join(", ") + "\n" : "");
+        if (total + block.length > MAX_CURATE_CHARS && blocks.length > 0) break;
+        blocks.push(block);
+        total += block.length;
+      }
+
+      var r = await callGemini(VIDEO_CURATE_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nLIGNES (deja groupees par angle par un scan precedent):\n" + blocks.join("\n"), false);
+      setVideoCuration(r);
+      // L'IA propose les essentielles precochees, l'utilisateur ajuste — pas de depart de zero.
+      var ess = (r && r.essentielles) || [];
+      var newSelected = {};
+      var newOrder = [];
+      ess.forEach(function(it) {
+        var key = videoLineKey(it.artist, it.track, it.lineIdx);
+        if (!newSelected[key]) {
+          newSelected[key] = true;
+          newOrder.push({ artist: it.artist, track: it.track, lineIdx: it.lineIdx });
+        }
+      });
+      setVideoSelected(newSelected);
+      setVideoOrder(newOrder);
+    } catch (e) {}
+    setVideoCurating(false);
   };
 
   var videoLineKey = function(artist, track, lineIdx) { return artist + "|||" + track + "|||" + lineIdx; };
@@ -1171,12 +1250,39 @@ export default function App() {
                 {videoLoading ? "scan..." : "scanner"}
               </button>
 
+              {videoCurating && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontSize: 10, color: "#666", fontStyle: "italic" }}>
+                  <div style={S.spinner} /> curation en cours — l'IA trie la matiere du scan...
+                </div>
+              )}
+
+              {videoCuration && videoCuration.trouvailles && videoCuration.trouvailles.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 9, color: "#f0c040", letterSpacing: 3, textTransform: "uppercase", marginBottom: 4, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>trouvailles</div>
+                  <div style={{ fontSize: 9, color: "#444", marginBottom: 12, fontStyle: "italic" }}>les connexions les plus fortes trouvees dans toute la matiere</div>
+                  {videoCuration.trouvailles.map(function(tr, ti) {
+                    var cached = cacheGet(tr.artist, tr.track);
+                    var a = cached && cached.d && resolveLineAnalysis(cached.d, tr.lineIdx);
+                    if (!a) return null;
+                    return (
+                      <div key={ti} style={{ marginBottom: 10, padding: "12px 14px", background: "#150f08", border: "1px solid #2a2010", borderRadius: 6 }}>
+                        <div style={{ fontSize: 9, color: "#666", textTransform: "lowercase" }}>{tr.artist} — {tr.track}</div>
+                        <div style={{ fontSize: 13, color: "#eee", lineHeight: 1.5, marginTop: 4 }}>"{a.o}"</div>
+                        {a.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", marginTop: 2 }}>{a.t}</div>}
+                        {tr.pourquoi_fort && <div style={{ fontSize: 11, color: "#f0c040", lineHeight: 1.4, marginTop: 6 }}>{stripCitationMarks(tr.pourquoi_fort)}</div>}
+                        {tr.lien_brief && <div style={{ fontSize: 10, color: "#999", lineHeight: 1.4, marginTop: 4 }}>{stripCitationMarks(tr.lien_brief)}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {videoOrder.length > 0 && (
                 <div style={{
                   position: "sticky", top: 0, zIndex: 10, marginBottom: 20,
                   background: "#0d0a10", border: "1px solid #2a1a3a", borderRadius: 6, padding: "12px 14px",
                 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                     <div style={{ fontSize: 9, color: "#c084fc", letterSpacing: 2, textTransform: "uppercase" }}>selection ({videoOrder.length}) — glisse pour reordonner</div>
                     <button onClick={copyVideoSelection} style={{
                       background: "transparent", border: "1px solid #2a1a3a", color: "#c084fc",
@@ -1230,43 +1336,72 @@ export default function App() {
                   )}
                   {videoResults.angles && videoResults.angles.length > 0 && (
                     <div style={{ marginBottom: 24 }}>
-                      <div style={{ fontSize: 9, color: "#c084fc", letterSpacing: 3, textTransform: "uppercase", marginBottom: 4, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>angles trouves</div>
-                      <div style={{ fontSize: 9, color: "#444", marginBottom: 16, fontStyle: "italic" }}>toute la matiere pertinente, sans tri — coche ce que tu gardes</div>
-                      {videoResults.angles.map(function(angle, ai) {
+                      <div onClick={function() { setVideoBruteExpanded(function(p) { return !p; }); }}
+                        style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", paddingBottom: 6, marginBottom: videoBruteExpanded ? 16 : 0, borderBottom: "1px solid #1a1a1a" }}>
+                        <span style={{ fontSize: 10, color: "#666" }}>{videoBruteExpanded ? "▾" : "▸"}</span>
+                        <span style={{ fontSize: 9, color: "#666", letterSpacing: 3, textTransform: "uppercase" }}>matiere brute</span>
+                        <span style={{ fontSize: 9, color: "#444", fontStyle: "italic" }}>tout ce que le scan a trouve, pour fouiller au-dela des essentielles</span>
+                      </div>
+                      {videoBruteExpanded && videoResults.angles.map(function(angle, ai) {
                         var angleColors = ["#38bdf8", "#4ade80", "#f0c040", "#e05030", "#c084fc"];
                         var ac = angleColors[ai % angleColors.length];
+                        var validLignes = (angle.lignes || []).map(function(ligne) {
+                          var cached = cacheGet(ligne.artist, ligne.track);
+                          var a = cached && cached.d && resolveLineAnalysis(cached.d, ligne.lineIdx);
+                          return a ? { ligne: ligne, a: a } : null;
+                        }).filter(Boolean);
+                        // Tri mecanique (pas de jugement IA): plus une ligne a de matiere (arc/mirror/
+                        // philo/callbacks), plus haut elle remonte — pas un ordre invente par le modele.
+                        validLignes.sort(function(x, y) { return lineRichness(y.a) - lineRichness(x.a); });
+                        var isExpanded = !!videoAngleExpanded[ai];
+                        var showAll = !!videoAngleShowAll[ai];
+                        var visible = showAll ? validLignes : validLignes.slice(0, 5);
+                        var hiddenCount = validLignes.length - visible.length;
                         return (
-                          <div key={ai} style={{ marginBottom: 28, paddingLeft: 12, borderLeft: "3px solid " + ac }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: ac, marginBottom: 12 }}>{angle.titre}</div>
-                            {(angle.lignes || []).map(function(ligne, li) {
-                              var cached = cacheGet(ligne.artist, ligne.track);
-                              var a = cached && cached.d && resolveLineAnalysis(cached.d, ligne.lineIdx);
-                              if (!a) return null;
-                              var key = videoLineKey(ligne.artist, ligne.track, ligne.lineIdx);
-                              var isChecked = !!videoSelected[key];
-                              return (
-                                <label key={li} style={{
-                                  display: "flex", gap: 10, marginBottom: 10, padding: "10px 12px",
-                                  background: isChecked ? "#12101a" : "#0a0a0a",
-                                  border: "1px solid " + (isChecked ? "#3a2a4a" : "#1a1a1a"),
-                                  borderRadius: 6, cursor: "pointer",
-                                }}>
-                                  <input type="checkbox" checked={isChecked}
-                                    onChange={function() { toggleVideoLine(ligne.artist, ligne.track, ligne.lineIdx); }}
-                                    style={{ marginTop: 3, flexShrink: 0 }} />
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 9, color: "#666", textTransform: "lowercase" }}>{ligne.artist} — {ligne.track}</div>
-                                    <div style={{ fontSize: 13, color: "#eee", lineHeight: 1.5, marginTop: 4 }}>"{a.o}"</div>
-                                    {a.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", marginTop: 2 }}>{a.t}</div>}
-                                    {ligne.pourquoi && <div style={{ fontSize: 10, color: ac, lineHeight: 1.4, marginTop: 6 }}>{stripCitationMarks(ligne.pourquoi)}</div>}
-                                    {a.sens && <div style={{ fontSize: 10, color: "#bbb", lineHeight: 1.4, marginTop: 4 }}><b>sens</b> {a.sens}</div>}
-                                    {a.arc && <div style={{ fontSize: 10, color: "#4ade80", lineHeight: 1.4, marginTop: 4 }}><b>arc</b> {a.arc}</div>}
-                                    {a.mirror && <div style={{ fontSize: 10, color: "#e05030", lineHeight: 1.4, marginTop: 4 }}><b>miroir</b> {a.mirror}</div>}
-                                    {a.philo && a.philo.explication && <div style={{ fontSize: 10, color: "#38bdf8", lineHeight: 1.4, marginTop: 4 }}><b>philo ({a.philo.ref})</b> {a.philo.explication}</div>}
-                                  </div>
-                                </label>
-                              );
-                            })}
+                          <div key={ai} style={{ marginBottom: 12, paddingLeft: 12, borderLeft: "3px solid " + ac }}>
+                            <div onClick={function() { setVideoAngleExpanded(function(p) { var n = Object.assign({}, p); n[ai] = !n[ai]; return n; }); }}
+                              style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0" }}>
+                              <span style={{ fontSize: 10, color: ac }}>{isExpanded ? "▾" : "▸"}</span>
+                              <span style={{ fontSize: 14, fontWeight: 700, color: ac }}>{angle.titre}</span>
+                              <span style={{ fontSize: 10, color: "#555" }}>({validLignes.length} ligne{validLignes.length > 1 ? "s" : ""})</span>
+                            </div>
+                            {isExpanded && (
+                              <div style={{ marginTop: 4 }}>
+                                {visible.map(function(item, li) {
+                                  var ligne = item.ligne, a = item.a;
+                                  var key = videoLineKey(ligne.artist, ligne.track, ligne.lineIdx);
+                                  var isChecked = !!videoSelected[key];
+                                  return (
+                                    <label key={li} style={{
+                                      display: "flex", gap: 10, marginBottom: 10, padding: "10px 12px",
+                                      background: isChecked ? "#12101a" : "#0a0a0a",
+                                      border: "1px solid " + (isChecked ? "#3a2a4a" : "#1a1a1a"),
+                                      borderRadius: 6, cursor: "pointer",
+                                    }}>
+                                      <input type="checkbox" checked={isChecked}
+                                        onChange={function() { toggleVideoLine(ligne.artist, ligne.track, ligne.lineIdx); }}
+                                        style={{ marginTop: 3, flexShrink: 0 }} />
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 9, color: "#666", textTransform: "lowercase" }}>{ligne.artist} — {ligne.track}</div>
+                                        <div style={{ fontSize: 13, color: "#eee", lineHeight: 1.5, marginTop: 4 }}>"{a.o}"</div>
+                                        {a.t && <div style={{ fontSize: 11, color: "#888", fontStyle: "italic", marginTop: 2 }}>{a.t}</div>}
+                                        {ligne.pourquoi && <div style={{ fontSize: 10, color: ac, lineHeight: 1.4, marginTop: 6 }}>{stripCitationMarks(ligne.pourquoi)}</div>}
+                                        {a.sens && <div style={{ fontSize: 10, color: "#bbb", lineHeight: 1.4, marginTop: 4 }}><b>sens</b> {a.sens}</div>}
+                                        {a.arc && <div style={{ fontSize: 10, color: "#4ade80", lineHeight: 1.4, marginTop: 4 }}><b>arc</b> {a.arc}</div>}
+                                        {a.mirror && <div style={{ fontSize: 10, color: "#e05030", lineHeight: 1.4, marginTop: 4 }}><b>miroir</b> {a.mirror}</div>}
+                                        {a.philo && a.philo.explication && <div style={{ fontSize: 10, color: "#38bdf8", lineHeight: 1.4, marginTop: 4 }}><b>philo ({a.philo.ref})</b> {a.philo.explication}</div>}
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                                {hiddenCount > 0 && (
+                                  <button onClick={function() { setVideoAngleShowAll(function(p) { var n = Object.assign({}, p); n[ai] = true; return n; }); }}
+                                    style={{ background: "transparent", border: "none", color: "#666", fontSize: 10, cursor: "pointer", padding: "4px 0 10px", textDecoration: "underline" }}>
+                                    voir les {hiddenCount} autres
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
