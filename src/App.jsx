@@ -90,7 +90,15 @@ var TRACKLIST_SYSTEM = "Tu donnes les tracklists d'albums. Reponds en JSON: {\"t
 
 var TRANSLATE_SYSTEM = "Tu es un traducteur rap. On te donne les PAROLES EXACTES d'un morceau, tu retournes la traduction française ligne par ligne en JSON.\n\nREGLE NUMERO 1, ABSOLUE: pour CHAQUE ligne tu DOIS produire un objet {\"o\":\"ligne originale\",\"t\":\"TRADUCTION FRANCAISE\",\"c\":confiance}. Le champ \"t\" doit TOUJOURS contenir la traduction française complète. Ne laisse JAMAIS \"t\" vide, null, ou identique a \"o\". Si une ligne est intraduisible, mets \"t\":\"<intraduisible>\". C'est ta seule mission: TRADUIRE.\n\nAutres regles:\n- Regroupe les lignes trop courtes qui font partie de la meme phrase en UNE seule.\n- Sections: titres generiques [Intro], [Verse 1], [Chorus], [Bridge], [Outro], [Interlude]. JAMAIS le nom d'un rappeur.\n- Inclus TOUTES les lignes (interludes, skits, outros). Coupe RIEN.\n- \"c\" = confiance 0-100. 100 = trad evidente. <70 = slang rare, ref obscure, sens incertain.\n- Si tout le morceau est en francais: \"t\":null pour chaque ligne, lang=\"francais\".\n- Contexte rap: \"bitch\"=\"meuf\" (jamais pute). \"nigga\"=ne traduis pas. \"whip\"=\"caisse\". Registre rap francais, pas francais scolaire.\n- CRUCIAL: utilise des mots SIMPLES et COURANTS. Le francais de tous les jours, pas de la litterature. Si t'hesites entre un mot simple et un mot recherche, prends TOUJOURS le simple.\n  MOTS INTERDITS dans les traductions: firmament, tumulte, redemption, resilience, ephemere, inexorable, naguere, abysses, tourmente, funeste, demeurer, oeuvrer, quete, dessein, en proie a, au sein de, jadis, faucher (pour \"tuer\" → dis \"buter/descendre\"), courroux, empreint, autrui.\n  Dis \"le ciel\" pas \"le firmament\". Dis \"rester\" pas \"demeurer\". Dis \"chercher\" pas \"quete\". Dis \"bosser\" pas \"oeuvrer\". Dis \"avant\" pas \"jadis/naguere\".\n  Le test: un ado de 16 ans qui ecoute du rap doit comprendre chaque mot de ta traduction sans dictionnaire.\n\nNotes de decryptage (champ \"notes\"):\n- \"r\"=mot/expression, \"e\"=explication courte, \"t\"=type (\"slang\"/\"ref\"/\"wordplay\"/\"sample\")\n\nFormat JSON:\n{\n\"lang\":\"anglais\",\n\"lines\":[\n{\"s\":\"[Intro]\"},\n{\"o\":\"ligne originale\",\"t\":\"traduction francaise\",\"c\":95}\n],\n\"notes\":[\n{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"ref\"}\n]\n}";
 
-var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste de rap precis et rigoureux. On te donne UNE ligne d'un morceau + le contexte + les lignes autour.\n\nREGLE ABSOLUE: TOUT en FRANCAIS.\nREGLE CENTRALE: cherche ce qu'on n'aurait PAS vu sans connaitre la discographie de l'artiste en profondeur. Precision avant volume — mieux vaut 1 couche forte que 4 moyennes. Si rien de solide ne se degage pour un champ: mets null (ou tableau vide, selon le champ). Une lecture forcee est pire qu'un champ vide.\n\nReponds en JSON:\n{\n\"sens\":\"ce que l'artiste dit, sens premier, 2 phrases MAXIMUM\",\n\"technique\":\"mecanique rap reellement presente (rime interne, double sens, homophonie, switch je/nous, placement sur le beat), ou null\",\n\"couches\":[\"couche 1\", \"couche 2\"],\n\"arc\":\"comment cette ligne s'inscrit dans la trajectoire de l'artiste a travers ses albums, ou null\",\n\"mirror\":\"si la ligne vise quelqu'un d'autre, projette-t-il un truc qu'il a lui-meme confesse ailleurs dans sa discographie ? ou null\",\n\"philo\":{\"ref\":\"Oeuvre, reference precise (chapitre/section/§)\",\"explication\":\"le concept en 1-2 phrases, tes propres mots\"},\n\"callbacks\":[{\"album\":\"morceau/album reference\",\"ligne\":\"la ligne EXACTE citee de l'autre morceau\",\"lien\":\"le lien, 1 phrase\"}]\n}\n\nCHAMP \"sens\": le sens premier, litteral, de la ligne — ce que l'artiste dit concretement. 2 phrases maximum. Pas de sur-lecture ici, juste le sens direct.\n\nCHAMP \"technique\": UNIQUEMENT ce qui est REELLEMENT present dans la ligne — rime interne, double sens, homophonie, switch je/nous (passer du \"je\" individuel a un \"nous\" collectif, ou l'inverse), un placement de mots notable sur le beat. Jamais une interpretation forcee. Si la ligne est du rap direct sans technique particuliere: la valeur JSON null. N'invente JAMAIS une technique pour remplir le champ.\n\nCHAMP \"couches\" (SENS SUPPLEMENTAIRES AU-DELA DU PREMIER DEGRE):\nMaximum 2. Uniquement si CLAIREMENT intentionnelles — pas des lectures que TOI tu plaques dessus. Chaque couche = 1 SEULE phrase. Si une couche a besoin de 3 phrases pour etre justifiee, c'est qu'elle est trop tiree par les cheveux: ne la mets pas.\nSi la ligne n'a pas de second degre reel: couches=[]. Zero couche vaut mieux qu'une couche forcee.\n\nCHAMP \"arc\" (TRAJECTOIRE DE L'ARTISTE):\nEst-ce que cette ligne illustre, marque ou contredit une evolution REELLE et identifiable de l'artiste a travers ses albums (changement de posture, de rapport a un theme, de sujet) ? Pas une generalite vague (\"il a grandi\", \"il a mûri\") — un point de comparaison precis avec un autre moment de sa discographie. Sinon: null.\n\nCHAMP \"mirror\" (PROJECTION / MIROIR):\nSi la ligne s'adresse a quelqu'un d'autre (rival, beef, critique) — est-ce que l'artiste y decrit un defaut ou une situation qu'il a LUI-MEME reconnue ou confessee ailleurs dans sa propre discographie ? Ce n'est un miroir que si tu peux pointer OU/QUAND il l'a reconnu pour lui-meme — sinon ce n'est qu'une supposition, pas un miroir. Ne force JAMAIS ce parallele: null si rien de verifiable.\n\nCHAMP \"philo\": parallele avec UN concept philosophique precis, uniquement si genuinement pertinent — sinon la valeur JSON null (pas un objet avec des champs vides).\n\"ref\": la reference precise ou l'utilisateur peut retrouver le passage LUI-MEME — oeuvre + chapitre/section/§ (ex: \"Genealogie de la morale, Premiere dissertation, §10\"). La reference doit etre EXACTE: ne mets un numero de section/§ precis QUE si tu es reellement sur qu'il est correct. Si tu connais l'oeuvre mais pas le numero exact: cite juste l'oeuvre ou le chapitre general, sans inventer un numero — une reference precise mais fausse envoie l'utilisateur au mauvais endroit, c'est pire qu'une reference vague.\n\"explication\": le concept en 1-2 phrases, ECRIT AVEC TES PROPRES MOTS — n'ecris JAMAIS de citation extraite du livre, meme courte, meme approximative. La reference sert a ce que l'utilisateur aille lire le passage source lui-meme, ne le cite pas a sa place.\nSi aucun parallele reel n'existe ou si tu dois forcer le lien: null.\n\nCHAMP \"callbacks\" (CONNEXIONS VERIFIABLES AVEC D'AUTRES MORCEAUX, PAS DE VAGUES THEMES):\nUniquement des callbacks VERIFIABLES: un mot/image/theme reellement reutilise ailleurs dans la discographie de l'artiste, que tu peux appuyer avec la ligne exacte de l'autre morceau. Une connexion thematique vague (\"il parle souvent d'argent\") n'est PAS un callback — ne la mets pas. Si tu n'es pas sur a 100% que la reference existe reellement: ne la mets pas.\nChaque callback = album/morceau, la ligne EXACTE citee, et le lien en 1 SEULE phrase. Pas de paragraphe explicatif.\nSi aucun callback verifiable: callbacks=[].\n\nSI DES \"ANNOTATIONS GENIUS REELLES\" SONT FOURNIES DANS LE MESSAGE: elles ont deja ete verifiees comme correspondant a cette ligne precise (ou une ligne toute proche) — utilise-les comme source fiable en priorite dans le champ concerne (sens/technique/couches/arc selon ce qui correspond). Ne RECOPIE PAS l'annotation mot pour mot — reformule avec tes propres mots, et precise \"d'apres une annotation Genius\" UNIQUEMENT si tu t'en sers reellement.\nSI LE MESSAGE DIT QU'AUCUNE ANNOTATION NE CORRESPOND: n'ecris JAMAIS \"d'apres une annotation Genius\" ni une formule equivalente — ce serait une fausse source. Analyse alors uniquement avec tes propres connaissances.\n\nSTYLE: direct, precis, comme un vrai passionne de rap qui explique a un pote — pas academique, pas de remplissage.";
+// Regles partagees par l'analyse ligne-par-ligne (clic Focus Mode) et l'analyse par lots (Analyser tout) —
+// definies UNE SEULE FOIS pour que les deux chemins restent toujours coherents entre eux.
+var DEEP_ANALYSIS_RULES = "CHAMP \"sens\": le sens premier, litteral, de la ligne — ce que l'artiste dit concretement. 2 phrases maximum. Pas de sur-lecture ici, juste le sens direct.\n\nCHAMP \"technique\": UNIQUEMENT ce qui est REELLEMENT present dans la ligne — rime interne, double sens, homophonie, switch je/nous (passer du \"je\" individuel a un \"nous\" collectif, ou l'inverse), un placement de mots notable sur le beat. Jamais une interpretation forcee. Si la ligne est du rap direct sans technique particuliere: la valeur JSON null. N'invente JAMAIS une technique pour remplir le champ.\n\nCHAMP \"couches\" (SENS SUPPLEMENTAIRES AU-DELA DU PREMIER DEGRE):\nMaximum 2. Uniquement si CLAIREMENT intentionnelles — pas des lectures que TOI tu plaques dessus. Chaque couche = 1 SEULE phrase. Si une couche a besoin de 3 phrases pour etre justifiee, c'est qu'elle est trop tiree par les cheveux: ne la mets pas.\nSi la ligne n'a pas de second degre reel: couches=[]. Zero couche vaut mieux qu'une couche forcee.\n\nCHAMP \"arc\" (TRAJECTOIRE DE L'ARTISTE):\nEst-ce que cette ligne illustre, marque ou contredit une evolution REELLE et identifiable de l'artiste a travers ses albums (changement de posture, de rapport a un theme, de sujet) ? Pas une generalite vague (\"il a grandi\", \"il a mûri\") — un point de comparaison precis avec un autre moment de sa discographie. Sinon: null.\n\nCHAMP \"mirror\" (PROJECTION / MIROIR):\nSi la ligne s'adresse a quelqu'un d'autre (rival, beef, critique) — est-ce que l'artiste y decrit un defaut ou une situation qu'il a LUI-MEME reconnue ou confessee ailleurs dans sa propre discographie ? Ce n'est un miroir que si tu peux pointer OU/QUAND il l'a reconnu pour lui-meme — sinon ce n'est qu'une supposition, pas un miroir. Ne force JAMAIS ce parallele: null si rien de verifiable.\n\nCHAMP \"philo\": parallele avec UN concept philosophique precis, uniquement si genuinement pertinent — sinon la valeur JSON null (pas un objet avec des champs vides).\n\"ref\": la reference precise ou l'utilisateur peut retrouver le passage LUI-MEME — oeuvre + chapitre/section/§ (ex: \"Genealogie de la morale, Premiere dissertation, §10\"). La reference doit etre EXACTE: ne mets un numero de section/§ precis QUE si tu es reellement sur qu'il est correct. Si tu connais l'oeuvre mais pas le numero exact: cite juste l'oeuvre ou le chapitre general, sans inventer un numero — une reference precise mais fausse envoie l'utilisateur au mauvais endroit, c'est pire qu'une reference vague.\n\"explication\": le concept en 1-2 phrases, ECRIT AVEC TES PROPRES MOTS — n'ecris JAMAIS de citation extraite du livre, meme courte, meme approximative. La reference sert a ce que l'utilisateur aille lire le passage source lui-meme, ne le cite pas a sa place.\nSi aucun parallele reel n'existe ou si tu dois forcer le lien: null.\n\nCHAMP \"callbacks\" (CONNEXIONS VERIFIABLES AVEC D'AUTRES MORCEAUX, PAS DE VAGUES THEMES):\nUniquement des callbacks VERIFIABLES: un mot/image/theme reellement reutilise ailleurs dans la discographie de l'artiste, que tu peux appuyer avec la ligne exacte de l'autre morceau. Une connexion thematique vague (\"il parle souvent d'argent\") n'est PAS un callback — ne la mets pas. Si tu n'es pas sur a 100% que la reference existe reellement: ne la mets pas.\nChaque callback = album/morceau, la ligne EXACTE citee, et le lien en 1 SEULE phrase. Pas de paragraphe explicatif.\nSi aucun callback verifiable: callbacks=[].";
+
+var DEEP_ANALYSIS_SYSTEM = "Tu es un analyste de rap precis et rigoureux. On te donne UNE ligne d'un morceau + le contexte + les lignes autour.\n\nREGLE ABSOLUE: TOUT en FRANCAIS.\nREGLE CENTRALE: cherche ce qu'on n'aurait PAS vu sans connaitre la discographie de l'artiste en profondeur. Precision avant volume — mieux vaut 1 couche forte que 4 moyennes. Si rien de solide ne se degage pour un champ: mets null (ou tableau vide, selon le champ). Une lecture forcee est pire qu'un champ vide.\n\nReponds en JSON:\n{\n\"sens\":\"ce que l'artiste dit, sens premier, 2 phrases MAXIMUM\",\n\"technique\":\"mecanique rap reellement presente (rime interne, double sens, homophonie, switch je/nous, placement sur le beat), ou null\",\n\"couches\":[\"couche 1\", \"couche 2\"],\n\"arc\":\"comment cette ligne s'inscrit dans la trajectoire de l'artiste a travers ses albums, ou null\",\n\"mirror\":\"si la ligne vise quelqu'un d'autre, projette-t-il un truc qu'il a lui-meme confesse ailleurs dans sa discographie ? ou null\",\n\"philo\":{\"ref\":\"Oeuvre, reference precise (chapitre/section/§)\",\"explication\":\"le concept en 1-2 phrases, tes propres mots\"},\n\"callbacks\":[{\"album\":\"morceau/album reference\",\"ligne\":\"la ligne EXACTE citee de l'autre morceau\",\"lien\":\"le lien, 1 phrase\"}]\n}\n\n" + DEEP_ANALYSIS_RULES + "\n\nSI DES \"ANNOTATIONS GENIUS REELLES\" SONT FOURNIES DANS LE MESSAGE: elles ont deja ete verifiees comme correspondant a cette ligne precise (ou une ligne toute proche) — utilise-les comme source fiable en priorite dans le champ concerne (sens/technique/couches/arc selon ce qui correspond). Ne RECOPIE PAS l'annotation mot pour mot — reformule avec tes propres mots, et precise \"d'apres une annotation Genius\" UNIQUEMENT si tu t'en sers reellement.\nSI LE MESSAGE DIT QU'AUCUNE ANNOTATION NE CORRESPOND: n'ecris JAMAIS \"d'apres une annotation Genius\" ni une formule equivalente — ce serait une fausse source. Analyse alors uniquement avec tes propres connaissances.\n\nSTYLE: direct, precis, comme un vrai passionne de rap qui explique a un pote — pas academique, pas de remplissage.";
+
+// Variante batch (bouton "Analyser tout"): plusieurs lignes d'un coup, chacune identifiee par [ligne N],
+// pour limiter le nombre d'appels API au lieu d'un appel par ligne.
+var DEEP_ANALYSIS_BATCH_SYSTEM = "Tu es un analyste de rap precis et rigoureux. On te donne PLUSIEURS lignes d'un morceau, chacune identifiee par un numero [ligne N], plus le contexte etendu autour pour suivre le fil.\n\nREGLE ABSOLUE: TOUT en FRANCAIS.\nREGLE CENTRALE: cherche ce qu'on n'aurait PAS vu sans connaitre la discographie de l'artiste en profondeur. Precision avant volume — mieux vaut 1 couche forte que 4 moyennes. Si rien de solide ne se degage pour un champ: mets null (ou tableau vide, selon le champ). Une lecture forcee est pire qu'un champ vide.\n\nAnalyse CHAQUE ligne listee dans \"LIGNES A ANALYSER\" independamment des autres, avec les MEMES regles que si tu analysais une seule ligne a la fois — juste plusieurs d'un coup. Les lignes listees en \"CONTEXTE\" servent uniquement a suivre le fil: NE LES ANALYSE PAS.\n\nReponds en JSON:\n{\n\"analyses\":[\n{\n\"lineIdx\":12,\n\"sens\":\"ce que l'artiste dit, sens premier, 2 phrases MAXIMUM\",\n\"technique\":\"mecanique rap reellement presente (rime interne, double sens, homophonie, switch je/nous, placement sur le beat), ou null\",\n\"couches\":[\"couche 1\", \"couche 2\"],\n\"arc\":\"comment cette ligne s'inscrit dans la trajectoire de l'artiste a travers ses albums, ou null\",\n\"mirror\":\"si la ligne vise quelqu'un d'autre, projette-t-il un truc qu'il a lui-meme confesse ailleurs dans sa discographie ? ou null\",\n\"philo\":{\"ref\":\"Oeuvre, reference precise (chapitre/section/§)\",\"explication\":\"le concept en 1-2 phrases, tes propres mots\"},\n\"callbacks\":[{\"album\":\"morceau/album reference\",\"ligne\":\"la ligne EXACTE citee de l'autre morceau\",\"lien\":\"le lien, 1 phrase\"}]\n}\n]\n}\n\nUn objet par ligne listee dans \"LIGNES A ANALYSER\", DANS LE MEME ORDRE, avec \"lineIdx\" EXACTEMENT egal au numero entre crochets [ligne N] — jamais invente, jamais approxime, jamais decale.\n\n" + DEEP_ANALYSIS_RULES + "\n\nSI DES \"ANNOTATIONS GENIUS REELLES\" SONT FOURNIES DANS LE MESSAGE (chacune associee a un numero de ligne precis): elles ont deja ete verifiees comme correspondant a CETTE ligne precise — utilise-les comme source fiable en priorite dans le champ concerne, UNIQUEMENT pour la ligne dont le numero est indique (jamais pour une autre ligne). Ne RECOPIE PAS l'annotation mot pour mot — reformule avec tes propres mots, et precise \"d'apres une annotation Genius\" UNIQUEMENT si tu t'en sers reellement pour cette ligne.\nPour une ligne SANS annotation associee: n'ecris JAMAIS \"d'apres une annotation Genius\" ni une formule equivalente pour cette ligne — ce serait une fausse source.\n\nSTYLE: direct, precis, comme un vrai passionne de rap qui explique a un pote — pas academique, pas de remplissage.";
 
 var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre, parfois l'album). Donne du VRAI contexte et une VRAIE lecture de ce morceau specifique, en parlant SIMPLE comme a un pote qui connait le sujet a fond. Pas un resume Wikipedia — une vraie analyse.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom ou null\",\"year\":null,\"producer\":\"prod ou null\",\"themes\":[\"theme1\",\"theme2\"],\"role\":\"le role de CE morceau dans l'album/la discographie, ou null\",\"summary\":\"3-5 phrases: de quoi parle vraiment ce morceau, en profondeur\",\"standout\":\"1-2 phrases: ce qui est particulier ou notable dans ce morceau precis, ou null\",\"philo\":{\"ref\":\"Oeuvre, reference precise (chapitre/section/§)\",\"explication\":\"le concept, tes propres mots\"} ou null,\"sonic_dna\":{\"mood\":\"ambiance en 2-3 mots concrets, ou null\",\"energy\":\"niveau d'energie/intensite en 2-3 mots, ou null\",\"prod\":\"style de production reel de CE morceau (instrumentation, texture rythmique), ou null\",\"texture\":\"elements sonores concrets qu'on entend (samples, basse, effets vocaux...), ou null\",\"similar\":[\"Artiste - Morceau\"]}}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- \"role\": la fonction de CE morceau specifiquement — intro/mise en contexte, single/tube, tournant emotionnel de l'album, morceau le plus dur/vulnerable, outro/conclusion, feature marquant, sample notable, etc. Precise et concret, pas vague. Si tu sais pas: la valeur JSON null (pas le mot \"null\" entre guillemets).\n- \"summary\": va au-dela du sujet general, et surtout NE SOFTEN PAS le sujet reel du morceau. Si le morceau parle de coups, de maltraitance, de violence familiale, de deuil, de prison: DIS-LE frontalement, ne le reformule pas en histoire de perseverance/resilience feel-good. Explique CE QUE l'artiste dit vraiment, le ton, l'angle qu'il prend — pas une lecture edulcoree qui evite le sujet dur pour una morale positive. Exemple MAUVAIS (edulcore): 'un hymne a la perseverance et la force de se relever'. Exemple BON (specifique): 'il raconte les coups et les chatiments corporels recus de ses parents pendant l'enfance, et retourne cette violence en question: pourquoi le parent a le droit de frapper sans expliquer'. Langage courant, comme a un pote, pas de critique musicale pretentieuse.\n- \"standout\": qu'est-ce qui distingue CE morceau des autres du meme artiste/album — une prise de risque, un sujet rarement aborde dans le rap, un choix de production, une collab notable, un moment de vulnerabilite rare. Si rien de special: la valeur JSON null, n'invente pas un truc pour remplir le champ.\n- \"philo\": UNIQUEMENT si un vrai parallele existe, JAMAIS force. Penseurs a mobiliser quand pertinent: les stoiciens Marc Aurele et Epictete (accepter ce qui ne depend pas de nous, la vertu face a l'adversite, l'amor fati), Nietzsche (morale du maitre vs morale de l'esclave, le ressentiment, 'ce qui ne tue pas rend plus fort', la volonte de puissance, le depassement de soi, la critique de la morale conventionnelle), Platon (apparence vs realite, la justice, les trois parties de l'ame — raison/coeur/desir), Aristote (l'eudaimonia comme but de la vie, la vertu comme juste milieu entre deux exces, la catharsis — l'art qui purge une emotion en la rejouant), Sartre (la liberte radicale, la responsabilite totale, la mauvaise foi, 'on choisit qui on devient'), Morgan Housel sur la psychologie de l'argent (le rapport a l'argent est une cicatrice psychologique, pas un calcul rationnel; la difference entre richesse visible/flex et richesse reelle).\n\"ref\": la reference precise ou l'utilisateur peut retrouver le passage LUI-MEME — oeuvre + chapitre/section/§ (ex: \"Genealogie de la morale, Premiere dissertation, §10\"). EXACTE uniquement: ne mets un numero de section/§ precis QUE si tu es reellement sur qu'il est correct — si tu connais l'oeuvre mais pas le numero exact, cite juste l'oeuvre ou le chapitre general sans inventer de numero. Une reference precise mais fausse est pire qu'une reference vague.\n\"explication\": ECRIS LA CONNEXION AVEC TES PROPRES MOTS. N'ECRIS JAMAIS de citation extraite d'un de ces livres, meme courte, meme approximative — explique le CONCEPT, ne cite pas le TEXTE (la reference sert a ca).\n1-2 phrases, direct et concret, comme un pote qui a lu de la philo mais qui parle pas comme un prof.\nExemple BON: {\"ref\":\"Par-dela bien et mal, §260\",\"explication\":\"Nietzsche appellerait ca la morale du maitre — il refuse la pitie et transforme la douleur en force au lieu de se poser en victime.\"}\nExemple MAUVAIS (cite le texte au lieu de l'expliquer): 'On observe ici une reminiscence de la dialectique nietzscheenne: \"...\"'\nSi aucun parallele reel n'existe ou si tu dois forcer le lien: la valeur JSON null. Un parallele plaque qui sonne intello pour rien est pire que pas de parallele.\n- \"sonic_dna\": la signature sonore de CE morceau precis. \"mood\": l'ambiance emotionnelle en 2-3 mots concrets (pas \"sombre\" tout seul — precise, ex: \"paranoia feutree\", \"euphorie tendue\"). \"energy\": le niveau d'energie/intensite en 2-3 mots (ex: \"lourd et lent\", \"nerveux, uptempo\"). \"prod\": a QUOI ressemble la production reellement (instrumentation, texture rythmique) — pas le nom du producteur, deja dans le champ 'producer'. \"texture\": les elements sonores concrets qu'on entend (type de basse, samples, effets vocaux, field recordings...). \"similar\": 2-4 morceaux d'AUTRES artistes qui sonnent vraiment pareil (meme famille de prod, meme ambiance), format \"Artiste - Morceau\" — uniquement des comparaisons precises et reelles, pas des artistes au hasard du meme genre general. Pour chaque sous-champ ou tu ne peux pas etre precis: la valeur JSON null (pour 'similar': tableau vide). Ne remplis JAMAIS un sous-champ avec une generalite pour eviter le null.\n- CRUCIAL sur year: ne mets une annee QUE si une recherche web confirme explicitement la date de sortie. Si t'hesites entre plusieurs annees ou que tu approximes: la valeur JSON null. Ne choisis jamais 'la plus probable'.\n- REGLE DE FORMAT: quand un champ est incertain, mets la vraie valeur JSON null (sans guillemets), JAMAIS la chaine de caracteres \"null\" entre guillemets — ce sont deux choses differentes et la deuxieme s'affiche comme du texte casse dans l'app.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info. Meme discipline pour 'role' et 'standout': mieux vaut null qu'une affirmation en l'air.";
 
@@ -170,6 +178,8 @@ export default function App() {
   var _j = useState(null), focusLine = _j[0], setFocusLine = _j[1];
   var _k = useState(null), focusData = _k[0], setFocusData = _k[1];
   var _l = useState(false), focusLoading = _l[0], setFocusLoading = _l[1];
+  var _dsr = useState(false), deepScanRunning = _dsr[0], setDeepScanRunning = _dsr[1];
+  var _dsp = useState({ done: 0, total: 0 }), deepScanProgress = _dsp[0], setDeepScanProgress = _dsp[1];
   var _p = useState(false), plLoading = _p[0], setPlLoading = _p[1];
   // Panneau actif dans le detail (null = vue morceau normale via `sel`, sinon un des 4 panneaux speciaux).
   // Remplace 4 booleans independants qu'il fallait reset a la main a chaque site d'appel.
@@ -460,6 +470,110 @@ export default function App() {
       setFocusData({ error: e.message });
     }
     setFocusLoading(false);
+  };
+
+  var ANALYSIS_BATCH_SIZE = 5;
+
+  // "Analyser tout": lance DEEP_ANALYSIS sur toutes les lignes pas encore en cache, par lots de
+  // ANALYSIS_BATCH_SIZE (au lieu d'un appel par ligne) pour limiter le nombre d'appels API.
+  var analyzeAllLines = async function() {
+    var entry = dRef.current[sel];
+    if (!entry || entry.st !== "ok" || !entry.d || !entry.d.lines) return;
+    var curLines = entry.d.lines;
+    var existingAnalyses = entry.d.lineAnalyses || {};
+
+    var lineEntries = [];
+    curLines.forEach(function(l, idx) { if (l.o) lineEntries.push({ idx: idx, o: l.o, t: l.t }); });
+
+    var chunks = [];
+    for (var ci = 0; ci < lineEntries.length; ci += ANALYSIS_BATCH_SIZE) {
+      var windowEntries = lineEntries.slice(ci, ci + ANALYSIS_BATCH_SIZE);
+      var targets = windowEntries.filter(function(e) { return !existingAnalyses[e.idx]; });
+      if (targets.length) chunks.push(targets);
+    }
+    if (!chunks.length) return;
+
+    var totalTargets = chunks.reduce(function(s, c) { return s + c.length; }, 0);
+    var doneCount = 0;
+    setDeepScanRunning(true);
+    setDeepScanProgress({ done: 0, total: totalTargets });
+
+    var geniusId = entry.d._geniusId;
+    var allAnnotations = [];
+    if (geniusId) {
+      try {
+        var annRes = await fetch("/api/annotations?songId=" + encodeURIComponent(geniusId));
+        var annData = await annRes.json();
+        allAnnotations = annData.annotations || [];
+      } catch (e) {}
+    }
+
+    var albumCtxStr = mode === "single" ? "" : " (album: " + album + ")";
+
+    var processChunk = async function(targets) {
+      var firstIdx = targets[0].idx, lastIdx = targets[targets.length - 1].idx;
+      var ctxStart = Math.max(0, firstIdx - 3);
+      var ctxEnd = Math.min(curLines.length - 1, lastIdx + 3);
+      var contextBlock = "";
+      for (var cci = ctxStart; cci <= ctxEnd; cci++) {
+        if (curLines[cci].o) contextBlock += cci + ": " + curLines[cci].o + "\n";
+      }
+      var targetsBlock = targets.map(function(e) {
+        return "[ligne " + e.idx + "] " + e.o + (e.t ? "\nTraduction: " + e.t : "");
+      }).join("\n\n");
+
+      var matchedByIdx = {};
+      var annotationsBlock = "";
+      targets.forEach(function(e) {
+        var matches = allAnnotations.filter(function(a) { return fragmentMatchesLine(a.fragment, e.o); });
+        if (matches.length) {
+          matchedByIdx[e.idx] = true;
+          annotationsBlock += "\n[ligne " + e.idx + "] annotation(s) Genius reelle(s):\n" +
+            matches.map(function(a) { return "- passage annote: \"" + a.fragment + "\"\n  explication: " + a.annotation; }).join("\n");
+        }
+      });
+      annotationsBlock = annotationsBlock
+        ? "\n\nANNOTATIONS GENIUS REELLES (par ligne):" + annotationsBlock
+        : "\n\nAucune annotation Genius ne correspond a aucune de ces lignes. N'ecris JAMAIS \"d'apres une annotation Genius\" ou equivalent.";
+
+      var prompt = "ARTISTE: " + artist + "\nMORCEAU: \"" + sel + "\"" + albumCtxStr +
+        "\n\nCONTEXTE (ne pas analyser, juste pour suivre le fil):\n" + contextBlock +
+        "\n\nLIGNES A ANALYSER:\n" + targetsBlock +
+        "\n\nCherche les callbacks vers d'autres morceaux/albums de " + artist + "." + annotationsBlock;
+
+      try {
+        var res = await callGemini(DEEP_ANALYSIS_BATCH_SYSTEM, prompt, true);
+        var byIdx = {};
+        (res.analyses || []).forEach(function(a) {
+          if (typeof a.lineIdx !== "number") return;
+          var clean = matchedByIdx[a.lineIdx] ? a : stripFakeGeniusCitation(a);
+          if (clean.couches && clean.couches.length > 2) clean.couches = clean.couches.slice(0, 2);
+          byIdx[a.lineIdx] = clean;
+        });
+        // Persiste ce lot tout de suite: le progres n'est jamais perdu si un lot suivant echoue.
+        var curEntry = dRef.current[sel];
+        if (curEntry && curEntry.st === "ok" && curEntry.d) {
+          var nextAnalyses = Object.assign({}, curEntry.d.lineAnalyses || {}, byIdx);
+          var mergedD = Object.assign({}, curEntry.d, { lineAnalyses: nextAnalyses });
+          var nextData = Object.assign({}, dRef.current);
+          nextData[sel] = { st: "ok", d: mergedD };
+          dRef.current = nextData;
+          setData(Object.assign({}, dRef.current));
+          cacheSet(artist, sel, { d: mergedD });
+        }
+      } catch (e) {}
+      doneCount += targets.length;
+      setDeepScanProgress({ done: doneCount, total: totalTargets });
+    };
+
+    var i = 0;
+    while (i < chunks.length) {
+      var batch = [];
+      for (var j = 0; j < 3 && i + j < chunks.length; j++) batch.push(processChunk(chunks[i + j]));
+      await Promise.all(batch);
+      i += 3;
+    }
+    setDeepScanRunning(false);
   };
 
   // Scan localStorage pour trouver tous les albums decodes
@@ -1512,6 +1626,25 @@ export default function App() {
                         : curD._source && <a href={curD._source} target="_blank" rel="noopener noreferrer" style={Object.assign({}, S.tag, { color: "#555", textDecoration: "none" })}>source</a>}
                       <span style={{ fontSize: 9, color: "#333", marginLeft: "auto" }}>Clique une ligne pour analyser</span>
                     </div>
+                    {curD.lines && curD.lines.some(function(l) { return l.o; }) && (function() {
+                      var totalLyricLines = curD.lines.filter(function(l) { return l.o; }).length;
+                      var analyzedCount = Object.keys(curD.lineAnalyses || {}).length;
+                      var allDone = analyzedCount >= totalLyricLines;
+                      return (
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+                          <button onClick={analyzeAllLines} disabled={deepScanRunning || allDone} style={{
+                            background: "transparent", border: "1px solid " + (allDone ? "#1a2a20" : "#2a2a2a"), borderRadius: 4,
+                            color: deepScanRunning ? "#555" : allDone ? "#4ade80" : "#4ade80",
+                            fontFamily: "inherit", fontSize: 10, padding: "6px 12px",
+                            cursor: deepScanRunning || allDone ? "default" : "pointer",
+                            letterSpacing: 2, textTransform: "uppercase",
+                          }}>
+                            {deepScanRunning ? "analyse... " + deepScanProgress.done + "/" + deepScanProgress.total : allDone ? "✓ tout analyse" : "analyser tout"}
+                          </button>
+                          {!deepScanRunning && <span style={{ fontSize: 9, color: "#555" }}>{analyzedCount}/{totalLyricLines} lignes analysees</span>}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {curD.context && (realVal(curD.context.summary) || realVal(curD.context.album)) && (function() {
