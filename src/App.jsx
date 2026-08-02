@@ -356,7 +356,12 @@ export default function App() {
           r._source = genius.source;
           r._geniusId = genius.geniusId || null;
           up({ st: "ok", d: r }); setDone(function(p) { return p + 1; });
-          if (r.lines && r.lines.length) cacheSet(artist, name, { d: r });
+          if (r.lines && r.lines.length) {
+            cacheSet(artist, name, { d: r });
+            // Mode Single: sans tracklist, getCachedAlbums() (donc Video Research) ne decouvre jamais
+            // ce morceau, meme si son cache est bien present et lisible directement par cle.
+            if (mode === "single") tlSet(artist, name, [name]);
+          }
           fetchContext(name);
           decoded = true;
         } catch(e2) {}
@@ -373,6 +378,7 @@ export default function App() {
             r2._source = "llm-recall";
             up({ st: "ok", d: r2 }); setDone(function(p) { return p + 1; });
             cacheSet(artist, name, { d: r2 });
+            if (mode === "single") tlSet(artist, name, [name]);
             fetchContext(name);
           } else {
             up({ st: "ok", d: { found: false, lines: [], notes: [], _source: genius.source || null } });
@@ -596,6 +602,7 @@ export default function App() {
   // Scan localStorage pour trouver tous les albums decodes
   var getCachedAlbums = function() {
     var albums = [];
+    var covered = {};
     try {
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
@@ -608,7 +615,24 @@ export default function App() {
               // Verifie qu'au moins un son est decode
               var decoded = tl.filter(function(t) { var c = cacheGet(a, t); return c && c.d; });
               if (decoded.length > 0) albums.push({ artist: a, album: al, tracks: tl, decoded: decoded.length });
+              tl.forEach(function(t) { covered[norm(a) + "|" + norm(t)] = true; });
             }
+          }
+        }
+      }
+      // Morceaux decodes en mode Single (pas de tracklist, cf. le fix mode==="single" dans decode()):
+      // sans ca, ils restent invisibles pour getCachedAlbums() malgre un cache valide, meme ceux
+      // decodes/analyses avant ce fix — chacun devient son propre pseudo-album pour rester
+      // decouvrable (Video Research notamment).
+      for (var j = 0; j < localStorage.length; j++) {
+        var k2 = localStorage.key(j);
+        if (k2 && k2.startsWith(CV + ":song:")) {
+          var sparts = k2.slice((CV + ":song:").length).split(":");
+          if (sparts.length >= 2) {
+            var sa = sparts[0], sn = sparts.slice(1).join(":");
+            if (covered[sa + "|" + sn]) continue;
+            var sc = cacheGet(sa, sn);
+            if (sc && sc.d) { albums.push({ artist: sa, album: sn, tracks: [sn], decoded: 1 }); covered[sa + "|" + sn] = true; }
           }
         }
       }
