@@ -77,10 +77,10 @@ async function runLookup(title, artist, token, res) {
       if (pn.lyrics) {
         return res.status(200).json({ found: true, lyrics: cleanLyrics(pn.lyrics), source: pn.url, title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg });
       }
-      var sonar = await fetchFromSonar(songArtist, songTitle);
+      var sonar = await fetchFromSonar(songArtist, songTitle, dbg.steps);
       dbg.steps.push("sonar: " + (sonar ? sonar.length + " chars" : "empty"));
       if (!sonar && (songArtist !== artist || songTitle !== title)) {
-        sonar = await fetchFromSonar(artist, title);
+        sonar = await fetchFromSonar(artist, title, dbg.steps);
         dbg.steps.push("sonar(original): " + (sonar ? sonar.length + " chars" : "empty"));
       }
       if (sonar) {
@@ -237,7 +237,7 @@ async function fetchFromParolesMusique(artist, title) {
     return { lyrics: "", url: url, status: r.status };
   } catch(e) { return { lyrics: "", url: "", status: 0 }; }
 }
-async function fetchFromSonar(artist, title) {
+async function fetchFromSonar(artist, title, dbg) {
   var apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return "";
   try {
@@ -250,34 +250,38 @@ async function fetchFromSonar(artist, title) {
         max_tokens: 300,
       }),
     });
-    if (!r.ok) return "";
+    if (!r.ok) { if (dbg) dbg.push("sonar_ask: http=" + r.status); return ""; }
     var data = await r.json();
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) return "";
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) { if (dbg) dbg.push("sonar_ask: reponse vide"); return ""; }
     var text = (data.choices[0].message.content || "").trim();
     var urls = text.match(/https?:\/\/[^\s\)\]"<>]+/g);
-    if (!urls || !urls.length) return "";
+    if (!urls || !urls.length) { if (dbg) dbg.push("sonar_ask: pas d'URL trouvee"); return ""; }
     for (var i = 0; i < urls.length && i < 3; i++) {
       var u = urls[i].replace(/[.,;:!?]+$/, "");
       var scraped = await scrapeGenericLyrics(u);
-      if (scraped && scraped.length > 100) return scraped;
+      if (dbg) dbg.push("sonar_scrape[" + u + "]: http=" + scraped.status + " | htmlLen=" + scraped.htmlLen + " | method=" + scraped.method + " | textLen=" + scraped.text.length);
+      if (scraped.text && scraped.text.length > 100) return scraped.text;
     }
-  } catch(e) {}
+  } catch(e) { if (dbg) dbg.push("sonar_scrape: exception " + e.message); }
   return "";
 }
 async function scrapeGenericLyrics(url) {
+  var out = { text: "", status: 0, htmlLen: 0, method: "none" };
   try {
     var r = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" },
       redirect: "follow",
     });
-    if (!r.ok) return "";
+    out.status = r.status;
+    if (!r.ok) return out;
     var html = await r.text();
-    if (html.length < 500) return "";
+    out.htmlLen = html.length;
+    if (html.length < 500) return out;
     var text = "";
     var jsonLd = html.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (jsonLd && jsonLd[1]) {
       text = jsonLd[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
-      if (text.length > 100) return text;
+      if (text.length > 100) { out.text = text; out.method = "json-ld"; return out; }
     }
     var containers = [
       /<div[^>]*data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/g,
@@ -299,7 +303,7 @@ async function scrapeGenericLyrics(url) {
           .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
           .replace(/&#x27;/g, "'").replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ")
           .replace(/\n{3,}/g, "\n\n").trim();
-        if (text.length > 100) return text;
+        if (text.length > 100) { out.text = text; out.method = "container[" + c + "]"; return out; }
       }
     }
     // Dernier recours: certains sites (surtout les vieux/artisanaux) mettent les paroles dans un
@@ -308,9 +312,9 @@ async function scrapeGenericLyrics(url) {
     // plutot la STRUCTURE: un bloc de nombreuses lignes courtes consecutives (le decoupage ligne
     // par ligne typique des paroles/poemes), peu importe ce qui l'entoure dans le HTML.
     var verse = extractVerseBlock(html);
-    if (verse.length > 100) return verse;
+    if (verse.length > 100) { out.text = verse; out.method = "verse-block"; return out; }
   } catch(e) {}
-  return "";
+  return out;
 }
 // Detecte un bloc de paroles par la FORME du texte (beaucoup de lignes courtes consecutives),
 // pas par le nom d'une classe/id CSS — utile pour les sites qui rangent les paroles dans un
