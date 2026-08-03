@@ -301,6 +301,10 @@ export default function App() {
   useEffect(function() {
     var handler = function() {
       setQuotaWarning("Stockage local plein — certaines analyses ne sont plus sauvegardees. Libere de la place (vide le cache d'anciens artistes dans les reglages du navigateur) pour ne pas perdre les prochaines.");
+      // Continuer la disco en masse une fois le quota depasse ferait payer des appels API pour des
+      // analyses qui ne se sauvegarderont plus — on arrete la file plutot que de gaspiller en silence.
+      // (Ecrit sur le ref directement: cet effet ne se re-abonne jamais, discoRunning y serait fige.)
+      discoStopRef.current = true;
     };
     window.addEventListener("rdc-quota-exceeded", handler);
     return function() { window.removeEventListener("rdc-quota-exceeded", handler); };
