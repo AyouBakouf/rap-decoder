@@ -90,7 +90,17 @@ function cacheGet(artist, name) {
   try { var r = localStorage.getItem(ckey(artist, name)); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 function cacheSet(artist, name, payload) {
-  try { localStorage.setItem(ckey(artist, name), JSON.stringify(payload)); } catch (e) {}
+  try {
+    localStorage.setItem(ckey(artist, name), JSON.stringify(payload));
+  } catch (e) {
+    // Avant: catch vide, l'ecriture echouait en silence — l'utilisateur payait l'appel API pour
+    // une analyse qui ne persistait jamais, sans jamais le savoir. Surtout critique pour la disco
+    // en masse, qui ecrit beaucoup en boucle. On notifie via un event DOM (cacheSet est une
+    // fonction top-level, pas un hook — pas d'acces direct au state React d'ici).
+    if (e && (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014)) {
+      try { window.dispatchEvent(new CustomEvent("rdc-quota-exceeded")); } catch (e2) {}
+    }
+  }
 }
 function cacheClear(artist, name) {
   try { localStorage.removeItem(ckey(artist, name)); } catch (e) {}
@@ -128,6 +138,12 @@ var BEST_BARS_SYSTEM = "Tu es un amoureux de rap qui cherche les MOMENTS qui tou
 var THEMATIC_SYSTEM = "L'utilisateur donne un THEME. Tu dois:\n1. DECOMPOSER ce theme en 3 a 5 ANGLES complementaires ou opposes\n2. Pour CHAQUE angle, chercher des passages pertinents dans les paroles fournies\n\nJSON UNIQUEMENT:\n{\n\"theme_complet\":\"reformulation enrichie du theme en 1 phrase\",\n\"angles\":[\n{\n\"name\":\"nom court de l'angle (ex: 'Porter un masque')\",\n\"description\":\"1 phrase qui explique cet angle du theme\",\n\"passages\":[{\"lines\":[{\"o\":\"ligne 1\",\"t\":\"trad 1\"},{\"o\":\"ligne 2\",\"t\":\"trad 2\"},{\"o\":\"ligne 3\",\"t\":\"trad 3\"},{\"o\":\"ligne 4\",\"t\":\"trad 4\"},{\"o\":\"ligne 5\",\"t\":\"trad 5\"},{\"o\":\"ligne 6\",\"t\":\"trad 6\"}],\"track\":\"morceau\",\"artist\":\"artiste\",\"album\":\"album\",\"link\":\"comment ca illustre cet angle, 1 phrase\",\"pertinence\":8}]\n}\n]\n}\n\nDECOMPOSITION DU THEME:\n- Trouve les FACES du concept: le pour/le contre, l'interieur/l'exterieur, celui qui agit/celui qui subit, la cause/la consequence.\n- Exemple pour 'assumer ses faiblesses': 'exposer ses vulnerabilites volontairement' / 'porter un masque pour cacher' / 'la vulnerabilite comme arme' / 'se faire exposer par quelqu'un' / 'la confession, l'aveu'\n- Exemple pour 'la trahison': 'se faire trahir par un proche' / 'trahir quelqu'un soi-meme' / 'le moment ou tu decouvres la trahison' / 'vivre apres la trahison' / 'la paranoia avant la preuve'\n- Les angles doivent etre CONCRETS et DIFFERENTS entre eux, pas des synonymes.\n\nPASSAGES:\n- MINIMUM 4, idealement 6-8 barres CONSECUTIVES du meme morceau pour chaque passage. JAMAIS 1-2 lignes isolees — un passage doit etre un BLOC qui a du sens seul.\n- Un passage qui MONTRE le theme a travers une scene > un passage qui le NOMME.\n- 1 a 3 passages par angle. Certains angles peuvent avoir 0 passages si rien de pertinent dans les paroles — c'est OK, garde l'angle quand meme (passages vide) pour que l'utilisateur voie qu'il existe.\n- Traduction ligne par ligne: {\"o\":\"original\",\"t\":\"traduction claire\"}. Si francais: t=null.\n- pertinence: 1-10.\n\nSTYLE:\n- Noms d'angles courts et percutants (3-5 mots).\n- \"link\": 1 phrase simple, comme a un pote.\n- TOUT en francais.";
 
 var SUGGEST_SYSTEM = "On te donne un THEME et une liste d'albums que l'utilisateur a DEJA decodes. Suggere des morceaux de rap qu'il a PAS encore decodes mais qui seraient pertinents pour ce theme.\n\nJSON UNIQUEMENT:\n{\"suggestions\":[{\"artist\":\"artiste\",\"track\":\"titre du morceau\",\"album\":\"album\",\"why\":\"pourquoi ce morceau est pertinent pour le theme, 1 phrase\",\"pertinence\":8}]}\n\nREGLES:\n- 5 a 10 suggestions, triees par pertinence decroissante.\n- Ne suggere PAS de morceaux qui sont dans les albums deja decodes.\n- Privilegier des morceaux ou le theme est CENTRAL, pas juste mentionne en passant.\n- Melange des classiques et des morceaux moins connus mais pertinents.\n- Privilegier le rap US et FR underground/lyrical (Ka, billy woods, Earl, MIKE, Navy Blue, Mach-Hommy, Veust, Limsa, Infinit, Jeanjass, GAL, Alpha Wann, Dinos, Lomepal, Nekfeu, Vald, etc.) mais pas exclusivement.\n- \"why\": 1 phrase simple, en francais. Dis concretement de quoi parle le morceau par rapport au theme.\n- pertinence: 1-10. 10 = le morceau EST le theme.\n- TOUT en francais.";
+
+// Utilise par decode() ET decodeTrackToCache() (disco en masse) — hoiste ici pour ne pas dupliquer
+// ce texte entre les deux, meme si l'orchestration autour differe (UI live vs ecriture cache seule).
+var LLM_FALLBACK_SYSTEM = "Tu es un traducteur rap. Utilise IMPERATIVEMENT web_search pour trouver les paroles EXACTES et VERIFIEES de ce morceau (site parolier fiable, genius, azlyrics...). N'ecris JAMAIS de paroles de memoire sans les avoir verifiees par la recherche.\n\nSi la recherche ne trouve PAS de source fiable et complete pour CE morceau precis: reponds {\"found\":false,\"lines\":[],\"notes\":[]}. N'invente RIEN pour combler les trous — mieux vaut ne rien trouver que d'inventer des paroles qui n'existent pas.\n\nFormat JSON si trouve:\n{\"found\":true,\"lang\":\"francais\",\"lines\":[{\"s\":\"[Couplet 1]\"},{\"o\":\"ligne originale\",\"t\":null,\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"slang\"}]}\n\nSi le morceau est en francais: t=null pour chaque ligne. Si anglophone: t=traduction francaise.";
+
+var DISCOGRAPHY_SYSTEM = "Tu connais bien le rap. On te donne un nom d'artiste. Liste ses ALBUMS STUDIO uniquement — pas les singles isoles, pas les mixtapes sauf si l'artiste/l'industrie les considere comme un album a part entiere de sa discographie officielle, pas les compilations/greatest hits, pas les doublons (deluxe/edition speciale/re-issue d'un album deja liste — garde uniquement l'edition la plus complete de chaque album, une seule fois).\n\nJSON UNIQUEMENT:\n{\"albums\":[{\"titre\":\"nom exact de l'album\",\"annee\":2022}]}\n\nTrie par annee croissante (le plus ancien en premier).\nCRUCIAL: ne devine JAMAIS un album qui n'existe pas et ne mets pas d'annee approximative. Si tu n'es pas sur qu'un titre fait vraiment partie de sa discographie: ne le mets pas. Si tu ne connais pas bien cet artiste ou sa discographie: albums=[] plutot que d'inventer une liste plausible. Mieux vaut une liste incomplete ou vide qu'une liste fausse.\n\nTOUT en francais pour le JSON (mais garde les titres d'albums dans leur langue/orthographe originale, ne les traduis pas).";
 
 var VIDEO_SCAN_SYSTEM = "Tu recois un BRIEF de video et une liste de lignes de rap DEJA ANALYSEES (chaque ligne a deja son sens, sa technique, ses couches, son arc, son miroir, son parallele philo, ses callbacks — deja verifies, tu n'as PAS a les re-analyser ni les re-ecrire).\n\nTON SEUL JOB: regrouper les lignes PERTINENTES pour ce brief par angle/theme. Tu ne choisis PAS les 'meilleures' lignes, tu ne les classes PAS par qualite, tu n'imposes AUCUN ordre narratif — tu regroupes tout ce qui est potentiellement pertinent, point. Le montage et l'ordre sont le travail de l'utilisateur, pas le tien.\n\nREGLE D'INCLUSION: sois MAXIMALEMENT inclusif. Si une ligne pourrait raisonnablement servir ce brief (meme indirectement, meme comme contre-exemple ou nuance), inclus-la. N'exclus une ligne QUE si elle n'a vraiment aucun rapport avec le brief. Ce n'est pas a toi de deviner ce que l'utilisateur va trouver 'le meilleur' — c'est son travail. Mieux vaut trop de matiere que pas assez: une ligne en trop, l'utilisateur la decoche en 1 clic. Une ligne manquante, il ne saura jamais qu'elle existait.\n\nReponds en JSON:\n{\n\"angles\":[\n{\n\"titre\":\"nom court de l'angle/theme (3-6 mots)\",\n\"lignes\":[{\"artist\":\"artiste EXACT tel que fourni\",\"track\":\"titre EXACT tel que fourni\",\"lineIdx\":12,\"pourquoi\":\"1 phrase: pourquoi cette ligne sert cet angle DE CE BRIEF precis\"}]\n}\n]\n}\n\n- \"artist\" et \"track\": copie EXACTEMENT (meme orthographe) un des morceaux fournis dans le message — n'improvise rien, ne traduis rien, ne corrige rien.\n- \"lineIdx\": EXACTEMENT le numero entre crochets [ligne N] associe a cette ligne dans le message — jamais invente, jamais approxime. Si tu n'es pas sur du numero exact: n'inclus PAS cette ligne plutot que de deviner.\n- \"pourquoi\": le lien avec CE brief precis, pas un resume de l'analyse deja fournie (qui sera affichee telle quelle a cote).\n- Une meme ligne peut apparaitre dans plusieurs angles si elle sert plusieurs facettes du brief.\n- 3 a 6 angles. Autant de lignes que necessaire par angle, PAS de maximum arbitraire.\n- Si AUCUNE ligne fournie ne sert vraiment le brief: angles=[]. N'invente pas un angle vide ou hors-sujet pour avoir l'air complet — mieux vaut peu d'angles pertinents que beaucoup de bruit.\n- N'ECRIS TOI-MEME NI sens, ni technique, ni analyse, ni traduction — ces champs existent deja pour chaque ligne et seront affiches automatiquement. Ton seul travail: regrouper par angle + expliquer le lien avec ce brief.\n\nTOUT en francais.";
 
@@ -229,6 +245,16 @@ export default function App() {
   var _vcu = useState(null), videoCuration = _vcu[0], setVideoCuration = _vcu[1];
   var _vcl = useState(false), videoCurating = _vcl[0], setVideoCurating = _vcl[1];
   var _vbe = useState(false), videoBruteExpanded = _vbe[0], setVideoBruteExpanded = _vbe[1];
+  // Disco en masse
+  var _da = useState(""), discoArtist = _da[0], setDiscoArtist = _da[1];
+  var _dal = useState(false), discoAlbumsLoading = _dal[0], setDiscoAlbumsLoading = _dal[1];
+  var _dab = useState(null), discoAlbums = _dab[0], setDiscoAlbums = _dab[1];
+  var _dsel = useState({}), discoSelected = _dsel[0], setDiscoSelected = _dsel[1];
+  var _drun = useState(false), discoRunning = _drun[0], setDiscoRunning = _drun[1];
+  var _dprog = useState(null), discoProgress = _dprog[0], setDiscoProgress = _dprog[1];
+  var _dlog = useState([]), discoLog = _dlog[0], setDiscoLog = _dlog[1];
+  var discoStopRef = useRef(false);
+  var _qwarn = useState(""), quotaWarning = _qwarn[0], setQuotaWarning = _qwarn[1];
   var _ac = useState(null), albumCtx = _ac[0], setAlbumCtx = _ac[1];
   var _acl = useState(false), albumCtxLoading = _acl[0], setAlbumCtxLoading = _acl[1];
   var stopRef = useRef(false);
@@ -269,6 +295,16 @@ export default function App() {
       sessionSave({ mode: mode, artist: artist, album: album, single: single, tracks: tracks });
     }
   }, [view, tracks, artist, album, single, mode]);
+
+  // localStorage plein: cacheSet le detecte et previent via un event DOM (voir plus haut) au lieu
+  // d'avaler l'echec en silence — surtout utile pendant la disco en masse qui ecrit beaucoup.
+  useEffect(function() {
+    var handler = function() {
+      setQuotaWarning("Stockage local plein — certaines analyses ne sont plus sauvegardees. Libere de la place (vide le cache d'anciens artistes dans les reglages du navigateur) pour ne pas perdre les prochaines.");
+    };
+    window.addEventListener("rdc-quota-exceeded", handler);
+    return function() { window.removeEventListener("rdc-quota-exceeded", handler); };
+  }, []);
 
   var fetchAlbumContext = function(art, alb) {
     setAlbumCtxLoading(true);
@@ -321,6 +357,129 @@ export default function App() {
         cacheSet(artist, name, { d: merged });
       })
       .catch(function() {});
+  };
+
+  // Version cache-seule de fetchContext, parametree (artist/name explicites) pour la disco en
+  // masse — ne touche jamais dRef/data, qui reflete le morceau actuellement affiche a l'ecran.
+  var fetchContextToCache = async function(artist, name, albumParam) {
+    try {
+      var albumCtxStr = albumParam ? " (album: " + albumParam + ")" : "";
+      var ctx = await callGemini(CONTEXT_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtxStr, true);
+      var cached = cacheGet(artist, name);
+      if (!cached || !cached.d) return;
+      cacheSet(artist, name, { d: Object.assign({}, cached.d, { context: ctx }) });
+    } catch (e) {}
+  };
+
+  // Version cache-seule de decode(), parametree, pour la disco en masse. Meme logique
+  // (traduction directe si les paroles sont trouvees, sinon fallback recherche web),
+  // mais n'ecrit jamais dans dRef/data ni ne touche sel/artist/mode/album.
+  var decodeTrackToCache = async function(artist, name, albumParam) {
+    var cached = cacheGet(artist, name);
+    if (cached && cached.d && cached.d.lines && cached.d.lines.length) return { ok: true, skipped: true };
+    try {
+      var genius = await fetchLyrics(name, artist, albumParam || "");
+      var decoded = false, r = null;
+      if (genius.found) {
+        try {
+          var prompt = "Voici les paroles EXACTES de \"" + name + "\" par " + artist + " (source: lrclib).\nCopie chaque ligne originale mot pour mot dans le champ \"o\". Ne modifie rien.\n\nPAROLES:\n\n" + genius.lyrics;
+          r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
+          r.found = true;
+          r._source = genius.source;
+          r._geniusId = genius.geniusId || null;
+          decoded = !!(r.lines && r.lines.length);
+        } catch (e2) {}
+      }
+      if (!decoded) {
+        try {
+          var r2 = await callGemini(LLM_FALLBACK_SYSTEM, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", false, "perplexity/sonar");
+          if (r2.found && r2.lines && r2.lines.length > 3) { r = r2; r._source = "llm-recall"; decoded = true; }
+        } catch (e3) {}
+      }
+      if (!decoded || !r) return { ok: false, error: "paroles introuvables" };
+      cacheSet(artist, name, { d: r });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
+
+  // Disco en masse: liste des albums studio d'un artiste (recherche web, jamais invente).
+  var fetchDiscography = async function(artistName) {
+    try {
+      var r = await callGemini(DISCOGRAPHY_SYSTEM, artistName, false, "perplexity/sonar");
+      return (r && r.albums) || [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  var stopDiscoQueue = function() { discoStopRef.current = true; };
+
+  var fetchDiscoAlbums = async function() {
+    if (!discoArtist.trim()) return;
+    setDiscoAlbumsLoading(true);
+    var albums = await fetchDiscography(discoArtist.trim());
+    setDiscoAlbumsLoading(false);
+    setDiscoAlbums(albums);
+    var sel = {};
+    albums.forEach(function(a) { sel[a.titre] = true; });
+    setDiscoSelected(sel);
+  };
+
+  var toggleDiscoAlbum = function(titre) {
+    setDiscoSelected(function(p) { var n = Object.assign({}, p); n[titre] = !n[titre]; return n; });
+  };
+
+  var resetDisco = function() {
+    setDiscoAlbums(null); setDiscoSelected({}); setDiscoProgress(null); setDiscoLog([]); setDiscoRunning(false);
+  };
+
+  // Disco en masse: pour chaque album coche, recupere sa tracklist puis decode + "analyser tout"
+  // chaque morceau, un par un. Un morceau/lot qui echoue est journalise et saute — jamais fatal
+  // pour le reste de la file. Les morceaux deja decodes+analyses sont deja sautes par
+  // decodeTrackToCache/analyzeTrackAllLinesToCache elles-memes (rien a refaire ici).
+  var runDiscoQueue = async function() {
+    var albums = (discoAlbums || []).filter(function(a) { return discoSelected[a.titre]; });
+    if (!albums.length) return;
+    discoStopRef.current = false;
+    setDiscoRunning(true);
+    setDiscoLog([]);
+    setDiscoProgress({ albumIdx: 0, albumTotal: albums.length, albumName: "", songIdx: 0, songTotal: 0, songName: "", lineDone: 0, lineTotal: 0 });
+
+    var addLog = function(msg) { setDiscoLog(function(p) { return p.concat([msg]); }); };
+
+    for (var ai = 0; ai < albums.length; ai++) {
+      if (discoStopRef.current) break;
+      var alb = albums[ai];
+      setDiscoProgress(function(p) { return Object.assign({}, p, { albumIdx: ai + 1, albumName: alb.titre, songIdx: 0, songTotal: 0, songName: "", lineDone: 0, lineTotal: 0 }); });
+
+      var tracks = tlGet(discoArtist, alb.titre);
+      if (!tracks || !tracks.length) {
+        try {
+          var tr = await callGemini(TRACKLIST_SYSTEM, alb.titre + " - " + discoArtist, false, "perplexity/sonar");
+          tracks = (tr && tr.tracks) || [];
+          if (tracks.length) tlSet(discoArtist, alb.titre, tracks);
+        } catch (e) { tracks = []; }
+      }
+      if (!tracks.length) { addLog("⚠ " + alb.titre + " : tracklist introuvable, album saute"); continue; }
+
+      setDiscoProgress(function(p) { return Object.assign({}, p, { songTotal: tracks.length }); });
+
+      for (var ti = 0; ti < tracks.length; ti++) {
+        if (discoStopRef.current) break;
+        var track = tracks[ti];
+        setDiscoProgress(function(p) { return Object.assign({}, p, { songIdx: ti + 1, songName: track, lineDone: 0, lineTotal: 0 }); });
+
+        var dres = await decodeTrackToCache(discoArtist, track, alb.titre);
+        if (!dres.ok) { addLog("⚠ " + alb.titre + " — " + track + " : " + (dres.error || "echec")); continue; }
+        if (!dres.skipped) { await fetchContextToCache(discoArtist, track, alb.titre); }
+        await analyzeTrackAllLinesToCache(discoArtist, track, alb.titre, function(done, total) {
+          setDiscoProgress(function(p) { return Object.assign({}, p, { lineDone: done, lineTotal: total }); });
+        });
+      }
+    }
+    setDiscoRunning(false);
   };
 
   // Lance le decodage des morceaux suivants en arriere-plan (pendant que tu ecoutes)
@@ -388,12 +547,7 @@ export default function App() {
       }
       if (!decoded) {
         try {
-          var LLM_FALLBACK = "Tu es un traducteur rap. Utilise IMPERATIVEMENT web_search pour trouver les paroles EXACTES et VERIFIEES de ce morceau (site parolier fiable, genius, azlyrics...). N'ecris JAMAIS de paroles de memoire sans les avoir verifiees par la recherche.\n\nSi la recherche ne trouve PAS de source fiable et complete pour CE morceau precis: reponds {\"found\":false,\"lines\":[],\"notes\":[]}. N'invente RIEN pour combler les trous — mieux vaut ne rien trouver que d'inventer des paroles qui n'existent pas.\n\nFormat JSON si trouve:\n{\"found\":true,\"lang\":\"francais\",\"lines\":[{\"s\":\"[Couplet 1]\"},{\"o\":\"ligne originale\",\"t\":null,\"c\":80}],\"notes\":[{\"r\":\"mot\",\"e\":\"explication\",\"t\":\"slang\"}]}\n\nSi le morceau est en francais: t=null pour chaque ligne. Si anglophone: t=traduction francaise.";
-          // "search:true" seul ne fait RIEN sur le backend (api/gemini.js ignore ce flag) — sans passer
-          // explicitement le modele perplexity/sonar, ce call n'a jamais eu de vraie recherche web, meme apres
-          // les deux tentatives precedentes de corriger le prompt. C'est le vrai fix, comme partout ailleurs
-          // dans ce fichier ou une recherche reelle est necessaire (contexte album, tracklist, video research).
-          var r2 = await callGemini(LLM_FALLBACK, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", false, "perplexity/sonar");
+          var r2 = await callGemini(LLM_FALLBACK_SYSTEM, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", false, "perplexity/sonar");
           if (r2.found && r2.lines && r2.lines.length > 3) {
             r2._source = "llm-recall";
             up({ st: "ok", d: r2 }); setDone(function(p) { return p + 1; });
@@ -514,9 +668,13 @@ export default function App() {
 
   // "Analyser tout": lance DEEP_ANALYSIS sur toutes les lignes pas encore en cache, par lots de
   // ANALYSIS_BATCH_SIZE (au lieu d'un appel par ligne) pour limiter le nombre d'appels API.
-  var analyzeAllLines = async function() {
-    var entry = dRef.current[sel];
-    if (!entry || entry.st !== "ok" || !entry.d || !entry.d.lines) return;
+  // Version parametree (artist/name/album explicites + callback de progres) de l'analyse par lots —
+  // utilisee par le bouton "analyser tout" (wrapper ci-dessous) ET par la disco en masse. Ecrit
+  // toujours dans le cache; ne touche dRef/data QUE si ce morceau est celui actuellement affiche,
+  // pour garder l'UI live synchronisee sans interferer avec un autre morceau en cours de traitement.
+  var analyzeTrackAllLinesToCache = async function(artist, name, albumParam, onProgress) {
+    var entry = cacheGet(artist, name);
+    if (!entry || !entry.d || !entry.d.lines) return { done: 0, total: 0 };
     var curLines = entry.d.lines;
     var existingAnalyses = entry.d.lineAnalyses || {};
 
@@ -529,12 +687,11 @@ export default function App() {
       var targets = windowEntries.filter(function(e) { return !existingAnalyses[e.idx]; });
       if (targets.length) chunks.push(targets);
     }
-    if (!chunks.length) return;
+    if (!chunks.length) return { done: 0, total: 0 };
 
     var totalTargets = chunks.reduce(function(s, c) { return s + c.length; }, 0);
     var doneCount = 0;
-    setDeepScanRunning(true);
-    setDeepScanProgress({ done: 0, total: totalTargets });
+    if (onProgress) onProgress(0, totalTargets);
 
     var geniusId = entry.d._geniusId;
     var allAnnotations = [];
@@ -546,7 +703,7 @@ export default function App() {
       } catch (e) {}
     }
 
-    var albumCtxStr = mode === "single" ? "" : " (album: " + album + ")";
+    var albumCtxStr = albumParam ? " (album: " + albumParam + ")" : "";
 
     var processChunk = async function(targets) {
       var firstIdx = targets[0].idx, lastIdx = targets[targets.length - 1].idx;
@@ -574,7 +731,7 @@ export default function App() {
         ? "\n\nANNOTATIONS GENIUS REELLES (par ligne):" + annotationsBlock
         : "\n\nAucune annotation Genius ne correspond a aucune de ces lignes. N'ecris JAMAIS \"d'apres une annotation Genius\" ou equivalent.";
 
-      var prompt = "ARTISTE: " + artist + "\nMORCEAU: \"" + sel + "\"" + albumCtxStr +
+      var prompt = "ARTISTE: " + artist + "\nMORCEAU: \"" + name + "\"" + albumCtxStr +
         "\n\nCONTEXTE (ne pas analyser, juste pour suivre le fil):\n" + contextBlock +
         "\n\nLIGNES A ANALYSER:\n" + targetsBlock +
         "\n\nCherche les callbacks vers d'autres morceaux/albums de " + artist + "." + annotationsBlock;
@@ -594,19 +751,21 @@ export default function App() {
           byIdx[a.lineIdx] = src ? Object.assign({}, clean, { o: src.o, t: src.t }) : clean;
         });
         // Persiste ce lot tout de suite: le progres n'est jamais perdu si un lot suivant echoue.
-        var curEntry = dRef.current[sel];
-        if (curEntry && curEntry.st === "ok" && curEntry.d) {
+        var curEntry = cacheGet(artist, name);
+        if (curEntry && curEntry.d) {
           var nextAnalyses = Object.assign({}, curEntry.d.lineAnalyses || {}, byIdx);
           var mergedD = Object.assign({}, curEntry.d, { lineAnalyses: nextAnalyses });
-          var nextData = Object.assign({}, dRef.current);
-          nextData[sel] = { st: "ok", d: mergedD };
-          dRef.current = nextData;
-          setData(Object.assign({}, dRef.current));
-          cacheSet(artist, sel, { d: mergedD });
+          cacheSet(artist, name, { d: mergedD });
+          if (dRef.current[name] && dRef.current[name].st === "ok") {
+            var nextData = Object.assign({}, dRef.current);
+            nextData[name] = { st: "ok", d: mergedD };
+            dRef.current = nextData;
+            setData(Object.assign({}, dRef.current));
+          }
         }
       } catch (e) {}
       doneCount += targets.length;
-      setDeepScanProgress({ done: doneCount, total: totalTargets });
+      if (onProgress) onProgress(doneCount, totalTargets);
     };
 
     var i = 0;
@@ -616,6 +775,19 @@ export default function App() {
       await Promise.all(batch);
       i += 3;
     }
+    return { done: doneCount, total: totalTargets };
+  };
+
+  // Bouton "analyser tout" sur le morceau actuellement affiche — fine couche au-dessus de la
+  // version parametree, juste pour brancher l'etat d'UI live (spinner/progres/disabled du bouton).
+  var analyzeAllLines = async function() {
+    if (!sel) return;
+    var albumParam = mode === "single" ? "" : album;
+    setDeepScanRunning(true);
+    setDeepScanProgress({ done: 0, total: 0 });
+    await analyzeTrackAllLinesToCache(artist, sel, albumParam, function(done, total) {
+      setDeepScanProgress({ done: done, total: total });
+    });
     setDeepScanRunning(false);
   };
 
@@ -1046,6 +1218,13 @@ export default function App() {
         {view !== "input" && <button onClick={reset} style={S.back}>{"<-"}</button>}
       </div>
 
+      {quotaWarning && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 16px", background: "#1a0f08", borderBottom: "1px solid #3a2010", fontSize: 11, color: "#f0c040", lineHeight: 1.5 }}>
+          <span style={{ flex: 1 }}>⚠ {quotaWarning}</span>
+          <span onClick={function() { setQuotaWarning(""); }} style={{ cursor: "pointer", color: "#a08030", flexShrink: 0 }}>{"✕"}</span>
+        </div>
+      )}
+
       {view === "input" && (
         <div style={S.inputWrap}>
           <div style={S.modeToggle}>
@@ -1077,6 +1256,15 @@ export default function App() {
               marginBottom: 8,
             }}>
               ▶ video research
+            </button>
+            <button onClick={function() { setActivePanel('disco'); setView("list"); }} style={{
+              background: "transparent", border: "1px solid #1a2a1a", borderRadius: 4,
+              color: "#4ade80", fontFamily: "inherit", fontSize: 9,
+              padding: "6px 12px", cursor: "pointer",
+              letterSpacing: 2, textTransform: "uppercase",
+              marginBottom: 8,
+            }}>
+              ⏣ disco en masse
             </button>
           </div>
         </div>
@@ -1213,6 +1401,119 @@ export default function App() {
                   }}>
                     ▶ video research
                   </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {showDetail && activePanel === 'disco' && (
+            <div style={S.detail}>
+              <button onClick={function() { setActivePanel(null); if (!tracks.length) setView("input"); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <div style={S.trackTitle}>⏣ Disco en masse</div>
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Decode et analyse toute la discographie d'un artiste, album par album.</div>
+
+              {!discoAlbums && (
+                <div>
+                  <Inp label="Artiste" val={discoArtist} set={setDiscoArtist} ph="Kendrick Lamar" enter={fetchDiscoAlbums} />
+                  <button onClick={fetchDiscoAlbums} disabled={discoAlbumsLoading || !discoArtist.trim()} style={{
+                    width: "100%", padding: "12px 0", marginTop: 4,
+                    background: discoAlbumsLoading || !discoArtist.trim() ? "#111" : "#0d1a10",
+                    color: discoAlbumsLoading ? "#555" : "#4ade80",
+                    border: "1px solid #1a3a20", borderRadius: 4,
+                    fontFamily: "inherit", fontSize: 11, cursor: "pointer",
+                    letterSpacing: 3, textTransform: "uppercase",
+                  }}>
+                    {discoAlbumsLoading ? "recherche..." : "chercher la discographie"}
+                  </button>
+                </div>
+              )}
+
+              {discoAlbums && !discoProgress && (
+                <div>
+                  {discoAlbums.length === 0 ? (
+                    <div style={{ fontSize: 11, color: "#999", padding: 12, background: "#0d0d0f", border: "1px solid #1a1a1a", borderRadius: 6, marginBottom: 12 }}>
+                      Discographie introuvable pour "{discoArtist}". Verifie l'orthographe ou reessaie.
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: 9, color: "#666", marginBottom: 12 }}>{discoAlbums.length} albums trouves — decoche ceux a exclure</div>
+                      {discoAlbums.map(function(a, ai) {
+                        return (
+                          <label key={ai} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", marginBottom: 4, background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 4, cursor: "pointer" }}>
+                            <input type="checkbox" checked={!!discoSelected[a.titre]} onChange={function() { toggleDiscoAlbum(a.titre); }} />
+                            <span style={{ fontSize: 12, color: "#ddd", flex: 1 }}>{a.titre}</span>
+                            {a.annee && <span style={{ fontSize: 10, color: "#555" }}>{a.annee}</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                    <button onClick={resetDisco} style={{
+                      background: "transparent", border: "1px solid #2a2a2a", color: "#666",
+                      fontFamily: "inherit", fontSize: 10, padding: "10px 14px", borderRadius: 4,
+                      cursor: "pointer", letterSpacing: 1, textTransform: "uppercase",
+                    }}>
+                      nouvelle recherche
+                    </button>
+                    {discoAlbums.length > 0 && (
+                      <button onClick={runDiscoQueue} disabled={!Object.values(discoSelected).some(Boolean)} style={{
+                        flex: 1, padding: "10px 0",
+                        background: "#0d1a10", color: "#4ade80",
+                        border: "1px solid #1a3a20", borderRadius: 4,
+                        fontFamily: "inherit", fontSize: 11, cursor: "pointer",
+                        letterSpacing: 3, textTransform: "uppercase",
+                      }}>
+                        lancer
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {discoProgress && (
+                <div>
+                  <div style={{ padding: "14px 16px", background: "#0d0a10", border: "1px solid #1a3a20", borderRadius: 6, marginBottom: 16 }}>
+                    <div style={{ fontSize: 10, color: "#4ade80", marginBottom: 8 }}>
+                      album {discoProgress.albumIdx}/{discoProgress.albumTotal} — {discoProgress.albumName}
+                    </div>
+                    {discoProgress.songTotal > 0 && (
+                      <div style={{ fontSize: 10, color: "#999", marginBottom: 6 }}>
+                        morceau {discoProgress.songIdx}/{discoProgress.songTotal} — {discoProgress.songName}
+                      </div>
+                    )}
+                    {discoProgress.lineTotal > 0 && (
+                      <div style={{ fontSize: 9, color: "#666" }}>
+                        lignes analysees {discoProgress.lineDone}/{discoProgress.lineTotal}
+                      </div>
+                    )}
+                  </div>
+                  {discoRunning
+                    ? <button onClick={stopDiscoQueue} style={{
+                        background: "transparent", border: "1px solid #3a1a1a", color: "#e05030",
+                        fontFamily: "inherit", fontSize: 10, padding: "8px 14px", borderRadius: 4,
+                        cursor: "pointer", letterSpacing: 1, textTransform: "uppercase", marginBottom: 16,
+                      }}>
+                        arreter
+                      </button>
+                    : <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 16 }}>✓ termine.</div>}
+                  {discoLog.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 9, color: "#666", letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>morceaux/albums sautes ({discoLog.length})</div>
+                      {discoLog.map(function(l, li) {
+                        return <div key={li} style={{ fontSize: 10, color: "#f0c040", marginBottom: 4, lineHeight: 1.4 }}>{l}</div>;
+                      })}
+                    </div>
+                  )}
+                  {!discoRunning && (
+                    <button onClick={resetDisco} style={{
+                      background: "transparent", border: "1px solid #2a2a2a", color: "#666",
+                      fontFamily: "inherit", fontSize: 10, padding: "10px 14px", borderRadius: 4,
+                      cursor: "pointer", letterSpacing: 1, textTransform: "uppercase", marginTop: 8,
+                    }}>
+                      nouvel artiste
+                    </button>
+                  )}
                 </div>
               )}
             </div>
