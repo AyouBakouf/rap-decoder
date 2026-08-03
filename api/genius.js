@@ -302,8 +302,58 @@ async function scrapeGenericLyrics(url) {
         if (text.length > 100) return text;
       }
     }
+    // Dernier recours: certains sites (surtout les vieux/artisanaux) mettent les paroles dans un
+    // conteneur generique (une classe de framework CSS type "w3-content", "blog", etc.) sans aucun
+    // indice semantique dans le nom de classe/id — impossible a cibler par selecteur. On detecte
+    // plutot la STRUCTURE: un bloc de nombreuses lignes courtes consecutives (le decoupage ligne
+    // par ligne typique des paroles/poemes), peu importe ce qui l'entoure dans le HTML.
+    var verse = extractVerseBlock(html);
+    if (verse.length > 100) return verse;
   } catch(e) {}
   return "";
+}
+// Detecte un bloc de paroles par la FORME du texte (beaucoup de lignes courtes consecutives),
+// pas par le nom d'une classe/id CSS — utile pour les sites qui rangent les paroles dans un
+// conteneur generique de framework (ex: "w3-content", "blog") sans aucun indice semantique.
+function extractVerseBlock(html) {
+  // Seules les balises de BLOC inserent un saut de ligne — les balises inline (span/a/b/i/strong...)
+  // sont juste retirees sans casser la ligne, sinon des fragments internes (un mot en gras, un lien)
+  // fragmentent chaque ligne en plusieurs lignes courtes separees de "blancs", et aucun run ne peut
+  // plus atteindre le seuil minimal meme quand le vrai bloc de paroles est bien la.
+  var plain = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&#x27;/g, "'").replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ");
+  var lines = plain.split("\n").map(function(l) { return l.trim(); });
+  // true = ligne "vers" (courte, style parole/poeme), false = ligne "prose"/non pertinente, null = vide
+  var classify = function(l) {
+    if (!l) return null;
+    var words = l.split(/\s+/).length;
+    return words <= 16 && l.length <= 100;
+  };
+  var runs = [];
+  var start = -1, blanksInRow = 0;
+  for (var i = 0; i <= lines.length; i++) {
+    var v = i < lines.length ? classify(lines[i]) : false;
+    if (v === true) {
+      if (start < 0) start = i;
+      blanksInRow = 0;
+    } else if (v === null && start >= 0 && blanksInRow < 1) {
+      blanksInRow++;
+    } else {
+      if (start >= 0) runs.push({ start: start, end: i - 1 - blanksInRow });
+      start = -1; blanksInRow = 0;
+    }
+  }
+  if (!runs.length) return "";
+  runs.sort(function(a, b) { return (b.end - b.start) - (a.end - a.start); });
+  var best = runs[0];
+  if (best.end - best.start + 1 < 20) return "";
+  return lines.slice(best.start, best.end + 1).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 function buildGeniusUrl(artist, title) {
   var slug = (artist + " " + title)
