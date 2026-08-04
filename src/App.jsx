@@ -28,11 +28,14 @@ function isFrenchLang(lang) {
   var n = (lang || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
   return n === "francais" || n === "french" || n === "fr";
 }
-// Force t=null sur toutes les lignes francaises, peu importe comment le LLM a ecrit "lang"
-// (evite la duplication texte/traduction quand le LLM renvoie "français" au lieu de "francais")
+// Force t=null quand une ligne "francaise" a ete dupliquee dans t (le LLM renvoie parfois la
+// meme ligne dans o et t au lieu de laisser t vide), peu importe comment il a ecrit "lang"
+// ("français" au lieu de "francais"). Ne se fie JAMAIS au champ "lang" seul pour decider de
+// vider t: un "lang" mal detecte sur un morceau anglophone effacerait alors de vraies traductions
+// deja produites par le modele — on ne vide que si t duplique vraiment o.
 function sanitizeTranslation(r) {
   if (r && isFrenchLang(r.lang) && r.lines) {
-    r.lines.forEach(function(l) { if (l.o) l.t = null; });
+    r.lines.forEach(function(l) { if (l.o && l.t && norm(l.t) === norm(l.o)) l.t = null; });
   }
   return r;
 }
@@ -174,7 +177,13 @@ async function callGemini(system, message, search, model, _retries) {
   if (data.error) throw new Error(data.error);
   var text = data.text || "";
   var m = text.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error("No JSON in response");
+  // finishReason "length" = le modele a ete coupe par la limite de tokens avant la fin du JSON —
+  // sans ce garde-fou, le regex ci-dessus matche quand meme jusqu'au dernier "}" complet trouve
+  // (souvent une ligne au milieu de la chanson) et affiche une traduction tronquee sans avertir.
+  if (data.finishReason === "length" && _retries < 1) {
+    return callGemini(system, message, search, model, (_retries || 0) + 1);
+  }
+  if (!m || data.finishReason === "length") throw new Error("Reponse tronquee (chanson trop longue pour un seul appel).");
   var attachCitations = function(obj) {
     if (data.citations && data.citations.length) obj._citations = data.citations;
     return obj;

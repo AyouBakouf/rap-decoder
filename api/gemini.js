@@ -31,7 +31,7 @@ export default async function handler(req, res) {
   var body = {
     model: model,
     messages: messages,
-    max_tokens: 16000,
+    max_tokens: 60000,
   };
 
   try {
@@ -66,9 +66,10 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: data.error.message || JSON.stringify(data.error).slice(0, 300) });
     }
 
-    var text = "";
+    var text = "", finishReason = null;
     if (data.choices && data.choices[0] && data.choices[0].message) {
       text = data.choices[0].message.content || "";
+      finishReason = data.choices[0].finish_reason || null;
     }
 
     if (!text) {
@@ -76,7 +77,7 @@ export default async function handler(req, res) {
     }
 
     var cleaned = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-    res.status(200).json({ text: cleaned, citations: data.citations || null });
+    res.status(200).json({ text: cleaned, citations: data.citations || null, finishReason: finishReason });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
