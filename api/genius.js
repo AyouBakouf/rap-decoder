@@ -103,6 +103,23 @@ function cleanLyrics(text) {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+// Cle de comparaison pour lrclib: on retire d'abord les mentions qui varient d'une
+// base a l'autre pour le meme morceau (feat., (Remastered), [Bonus]) avant de slugifier.
+function lrclibKey(s) {
+  return toSlug(String(s || "")
+    .replace(/\(.*?\)|\[.*?]/g, " ")
+    .replace(/\b(feat|ft|featuring|prod|remaster(ed)?|version|edit)\b.*/gi, " "));
+}
+function matchesLoosely(a, b) {
+  if (!a || !b) return false;
+  return a.indexOf(b) !== -1 || b.indexOf(a) !== -1;
+}
+// Les entrees synchronisees stockent le texte prefixe de timestamps [00:12.34].
+function stripLrcTimestamps(s) {
+  return String(s || "").split("\n").map(function(l) {
+    return l.replace(/^\s*(\[\d{1,2}:\d{2}(\.\d{1,3})?]\s*)+/, "");
+  }).join("\n").trim();
+}
 async function fetchFromLrclib(artist, title) {
   try {
     var searchUrl = "https://lrclib.net/api/search?artist_name=" + encodeURIComponent(artist) + "&track_name=" + encodeURIComponent(title);
@@ -110,22 +127,31 @@ async function fetchFromLrclib(artist, title) {
     if (!r.ok) return "";
     var results = await r.json();
     if (!results || !results.length) return "";
-    var artistNorm = artist.toLowerCase().replace(/[^a-z0-9]/g, "");
+    var wantArtist = lrclibKey(artist);
+    var wantTitle = lrclibKey(title);
+    if (!wantArtist || !wantTitle) return "";
+    // On exige que l'artiste ET le titre correspondent. Filtrer sur le seul artiste
+    // laissait passer un autre morceau du meme artiste, que l'heuristique "le plus
+    // long gagne" ci-dessous allait justement privilegier s'il etait plus fourni.
+    // Et si rien ne correspond, on abandonne: se rabattre sur l'ensemble des
+    // resultats servait les paroles d'un homonyme sans que rien ne le signale.
     var candidates = results.filter(function(res) {
-      var a = (res.artistName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      return a.indexOf(artistNorm) !== -1 || artistNorm.indexOf(a) !== -1;
+      if (res.instrumental) return false;
+      return matchesLoosely(lrclibKey(res.artistName), wantArtist)
+          && matchesLoosely(lrclibKey(res.trackName), wantTitle);
     });
-    if (!candidates.length) candidates = results;
+    if (!candidates.length) return "";
     // lrclib a souvent plusieurs entrees dupliquees pour le meme morceau, dont des versions
     // tronquees ou mal taguees (vu sur "2007" de JID: une entree a 767 caracteres, une autre a
     // 7591 pour le meme artiste+titre). La plus courte est presque toujours tronquee/fausse —
     // on prend celle avec le plus de texte plutot que la premiere renvoyee par l'API.
-    var best = candidates.reduce(function(a, b) {
-      var la = (a && a.plainLyrics) ? a.plainLyrics.length : 0;
-      var lb = (b && b.plainLyrics) ? b.plainLyrics.length : 0;
-      return lb > la ? b : a;
-    }, null);
-    if (best && best.plainLyrics && best.plainLyrics.length > 30) return best.plainLyrics;
+    var best = "";
+    for (var i = 0; i < candidates.length; i++) {
+      // A defaut de texte brut, la version synchronisee contient les memes paroles.
+      var text = candidates[i].plainLyrics || stripLrcTimestamps(candidates[i].syncedLyrics);
+      if (text && text.length > best.length) best = text;
+    }
+    if (best.length > 30) return best;
   } catch (e) {}
   return "";
 }

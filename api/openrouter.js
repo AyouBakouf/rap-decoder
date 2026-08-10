@@ -4,11 +4,14 @@ export default async function handler(req, res) {
   var apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'OPENROUTER_API_KEY not set' });
 
-  var model = process.env.DEEPSEEK_MODEL || "deepseek/deepseek-r1-0528";
+  // V4 Pro remplace R1-0528 (mai 2025) : sortie moins chere ($0.87 vs $2.15 par
+  // million) et contexte 1M au lieu de 164K, ce qui compte sur un morceau dense.
+  var model = process.env.DEEPSEEK_MODEL || "deepseek/deepseek-v4-pro";
   var system = req.body.system || "";
   var message = req.body.message || "";
 
-  // R1 prefere tout dans le user message plutot qu'un system separe
+  // Fusion heritee de R1, qui preferait tout dans le user message plutot qu'un
+  // system separe. Sans effet negatif connu sur V4, on la garde.
   var fullMessage = system ? system + "\n\n---\n\n" + message : message;
 
   var body = {
@@ -64,7 +67,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Reponse vide. Debug: " + JSON.stringify(data).slice(0, 500) });
     }
 
-    // Virer les tags <think> de R1
+    // Virer les tags <think> : R1 les emettait, un modele de raisonnement configure
+    // via DEEPSEEK_MODEL peut le refaire, donc on garde le nettoyage.
     text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 
     // Nettoyer markdown
@@ -77,7 +81,7 @@ export default async function handler(req, res) {
     res.status(200).json({ text: cleaned });
   } catch (e) {
     if (e.name === 'AbortError') {
-      return res.status(504).json({ error: 'Timeout (>55s). DeepSeek R1 met du temps a reflechir, reessaie.' });
+      return res.status(504).json({ error: 'Timeout (>55s). Le decodeur secondaire met du temps a repondre, reessaie.' });
     }
     res.status(500).json({ error: e.message });
   }

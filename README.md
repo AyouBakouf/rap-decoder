@@ -41,7 +41,9 @@ Le rap c'est le genre musical le plus riche en texte qui existe et la plupart de
 2. Create Key → copie-la (commence par `sk-or-v1-...`)
 3. Crédite le compte (facturé à l'usage, voir section Coût)
 
-Sans OpenRouter, le fallback paroles bascule de Perplexity Sonar vers Gemini + Google Search. Attention : l'outil `google_search` a un quota séparé de celui du modèle, et il est **nul sur le tier gratuit**. Sur une clé Google gratuite, le décodage marche parfaitement mais la recherche de paroles retombe sur le seul scraping direct — c'est-à-dire dégradée pour les artistes peu référencés.
+Sans OpenRouter crédité, le décodage et la traduction marchent parfaitement sur la clé Google gratuite, mais tout ce qui exige une **recherche web** tombe : le mode Album affiche « Album introuvable » sur les artistes peu référencés, faute de tracklist. L'outil `google_search` ne sauve rien — son quota est séparé de celui du modèle et il est nul sur le tier gratuit.
+
+C'est le rôle de `SEARCH_VIA_OPENROUTER=1` : seuls ces appels de recherche repassent chez Sonar (~$0.005 la requête), le décodage restant gratuit sur Google.
 
 **Genius** (obligatoire — récupération des paroles)
 
@@ -75,7 +77,8 @@ git push -u origin main
    | `OPENROUTER_API_KEY` | `sk-or-v1-...` | une des deux |
    | `GENIUS_API_TOKEN` | ton Client Access Token | oui |
    | `GEMINI_MODEL` | défaut `gemini-3.6-flash` (Google) / `google/gemini-2.5-flash` (OpenRouter) | non |
-   | `DEEPSEEK_MODEL` | défaut `deepseek/deepseek-r1-0528` | non |
+   | `DEEPSEEK_MODEL` | défaut `deepseek/deepseek-v4-pro` | non |
+   | `SEARCH_VIA_OPENROUTER` | `1` si OpenRouter est crédité | recommandé |
 4. Deploy
 
 C'est en ligne.

@@ -46,23 +46,7 @@ export default async function handler(req, res) {
   var defaultModel = provider ? provider.model : (process.env.GEMINI_MODEL || "google/gemini-2.5-flash");
 
   if (req.method === 'GET') {
-    // Presence et longueur seulement : de quoi distinguer "absente", "mal scopee"
-    // et "collee tronquee" sans jamais renvoyer un secret dans la reponse HTTP.
-    var envSeen = {};
-    ["GOOGLE_API_KEY", "OPENROUTER_API_KEY", "GENIUS_API_TOKEN", "GEMINI_MODEL"].forEach(function (k) {
-      var v = process.env[k];
-      if (v === undefined) envSeen[k] = "ABSENTE (pas definie)";
-      else if (!v.trim()) envSeen[k] = "DEFINIE MAIS VIDE (le champ existe dans Vercel, sans valeur)";
-      else envSeen[k] = "presente (" + v.trim().length + " car.)";
-    });
-    // Un nom mal orthographie ou mal scope est la cause la plus frequente :
-    // lister les variables qui ressemblent a une cle permet de le voir tout de suite.
-    var lookalikes = Object.keys(process.env).filter(function (k) {
-      return /GOOGLE|GEMINI|OPENROUTER|GENIUS/i.test(k);
-    });
-    var envInfo = { env: envSeen, clesDetectees: lookalikes, vercelEnv: process.env.VERCEL_ENV || null };
-
-    if (!provider) return res.status(200).json(Object.assign({ status: "FAIL", reason: "Aucune cle configuree (GOOGLE_API_KEY ou OPENROUTER_API_KEY)" }, envInfo));
+    if (!provider) return res.status(200).json({ status: "FAIL", reason: "Aucune cle configuree (GOOGLE_API_KEY ou OPENROUTER_API_KEY)" });
     try {
       var testRes = await fetch(provider.url, {
         method: 'POST',
@@ -70,9 +54,9 @@ export default async function handler(req, res) {
         body: JSON.stringify({ model: defaultModel, messages: [{ role: "user", content: "Reponds: {\"ok\":true}" }], max_tokens: 50 }),
       });
       var raw = await testRes.text();
-      return res.status(200).json(Object.assign({ status: testRes.ok ? "OK" : "FAIL", httpStatus: testRes.status, provider: provider.name, model: defaultModel }, envInfo, { raw: raw.slice(0, 600) }));
+      return res.status(200).json({ status: testRes.ok ? "OK" : "FAIL", httpStatus: testRes.status, provider: provider.name, model: defaultModel, raw: raw.slice(0, 600) });
     } catch (e) {
-      return res.status(200).json(Object.assign({ status: "FAIL", error: e.message, provider: provider.name, model: defaultModel }, envInfo));
+      return res.status(200).json({ status: "FAIL", error: e.message, provider: provider.name, model: defaultModel });
     }
   }
 
