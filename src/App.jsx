@@ -250,6 +250,53 @@ function artistBestLines(artist) {
   return out.sort(function(x, y) { return (y.impact || 0) - (x.impact || 0); });
 }
 
+// Classement des couplets. Le decoupage est gratuit: TRANSLATE_SYSTEM insere deja
+// des marqueurs de section ({"s":"[Verse 1]"}) dans les lignes en cache. Le score
+// est deduit des lignes du couplet que l'analyse d'ecriture a retenues, donc sur la
+// meme echelle d'impact que les onglets Lignes et Passages.
+//
+// Limite assumee: l'analyse ne note que ~8 lignes par morceau. Un couplet
+// regulierement bon mais sans ligne saillante ressort donc sous-estime — d'ou le
+// nombre de lignes retenues affiche a cote du score, pour que ce soit lisible.
+function artistBestVerses(artist) {
+  var rows = scanCache(CV + ":song:" + norm(artist) + ":");
+  var out = [];
+  rows.forEach(function(r) {
+    var d = r.value && r.value.d;
+    if (!d || !d.lines || !d.lines.length || !d.analysis) return;
+    var track = r.value._t || r.tail;
+
+    // Impact par ligne, indexe sur le texte original.
+    var scored = {};
+    ["essentiel", "notable"].forEach(function(b) {
+      (d.analysis[b] || []).forEach(function(p) {
+        if (p && p.o) scored[norm(p.o)] = p.impact || 0;
+      });
+    });
+
+    var cur = null;
+    var flush = function() {
+      if (!cur || cur.lines.length < 4) return;
+      if (!cur.hits) return; // aucun repere de qualite: on ne classe pas au hasard
+      out.push({
+        track: track, section: cur.section, lines: cur.lines,
+        score: cur.total, hits: cur.hits, best: cur.best,
+      });
+    };
+    d.lines.forEach(function(l) {
+      if (l.s) { flush(); cur = { section: l.s, lines: [], total: 0, hits: 0, best: 0 }; return; }
+      if (!l.o || !cur) return;
+      cur.lines.push(l);
+      var imp = scored[norm(l.o)];
+      if (imp) { cur.total += imp; cur.hits += 1; if (imp > cur.best) cur.best = imp; }
+    });
+    flush();
+  });
+  // Le total recompense un couplet qui enchaine plusieurs lignes fortes, la
+  // meilleure ligne departage a total egal.
+  return out.sort(function(x, y) { return (y.score - x.score) || (y.best - x.best); });
+}
+
 // Idem pour les passages de 4-8 barres, agreges depuis les albums deja extraits.
 function artistBestBars(artist) {
   var rows = scanCache(CV + ":bb:" + norm(artist) + ":");
@@ -1417,6 +1464,7 @@ export default function App() {
       artist: who,
       lines: artistBestLines(who),
       bars: artistBestBars(who),
+      verses: artistBestVerses(who),
       stats: artistCacheStats(who),
     });
   };
@@ -1668,12 +1716,14 @@ export default function App() {
               </button>
 
               {bestData && (function() {
-                var items = bestTab === "lignes" ? bestData.lines : bestData.bars;
+                var items = bestTab === "lignes" ? bestData.lines
+                  : bestTab === "passages" ? bestData.bars
+                  : (bestData.verses || []);
                 var st = bestData.stats;
                 return (
                   <div style={{ marginTop: 20 }}>
                     <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                      {[["lignes", "lignes", bestData.lines.length], ["passages", "passages", bestData.bars.length]].map(function(t) {
+                      {[["lignes", "lignes", bestData.lines.length], ["passages", "passages", bestData.bars.length], ["couplets", "couplets", (bestData.verses || []).length]].map(function(t) {
                         var on = bestTab === t[0];
                         return (
                           <button key={t[0]} onClick={function() { setBestTab(t[0]); }} style={{
@@ -1693,18 +1743,20 @@ export default function App() {
                     {items.length === 0 && (
                       <div style={{ padding: "18px 0", textAlign: "center" }}>
                         <div style={{ fontSize: 11, color: "#777", lineHeight: 1.6, marginBottom: 4 }}>
-                          {bestTab === "lignes"
-                            ? (st.tracks === 0
-                                ? "Rien en cache pour " + bestData.artist + "."
-                                : st.tracks + " morceau(x) en cache, mais " + st.analyzed + " analyse(s).")
-                            : (st.albumsWithBars === 0
+                          {bestTab === "passages"
+                            ? (st.albumsWithBars === 0
                                 ? "Aucun album de " + bestData.artist + " n'a encore eu son extraction de passages."
-                                : "Extractions presentes mais vides.")}
+                                : "Extractions presentes mais vides.")
+                            : (st.tracks === 0
+                                ? "Rien en cache pour " + bestData.artist + "."
+                                : st.tracks + " morceau(x) en cache, mais " + st.analyzed + " analyse(s).")}
                         </div>
                         <div style={{ fontSize: 9, color: "#444", lineHeight: 1.6, marginBottom: 14 }}>
                           {bestTab === "lignes"
                             ? "Les lignes viennent de l'analyse d'ecriture, lancee par morceau ou via Best of album."
-                            : "Les passages viennent du bouton Best bars, a lancer une fois par album."}
+                            : bestTab === "passages"
+                            ? "Les passages viennent du bouton Best bars, a lancer une fois par album."
+                            : "Les couplets sont decoupes sur les marqueurs de section et notes d'apres les lignes retenues par l'analyse d'ecriture. Il en faut donc au moins une par couplet."}
                         </div>
                         <button onClick={function() { setBestArtist(""); setDiscoArtist(bestData.artist); setActivePanel('disco'); }} style={{
                           background: "transparent", border: "1px solid #1a2a1a", borderRadius: 4,
@@ -1766,6 +1818,33 @@ export default function App() {
                           }}>
                             {bestCopied === id ? "✓ copie" : "copier"}
                           </button>
+                        </div>
+                      );
+                    })}
+
+                    {items.length > 0 && bestTab === "couplets" && items.map(function(v, i) {
+                      var id = "v" + i;
+                      return (
+                        <div key={id} style={{ border: "1px solid #1a1a1a", borderRadius: 4, padding: 10, marginBottom: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 }}>
+                            <span style={{ fontSize: 8, color: "#555", letterSpacing: 1, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {v.track} · {v.section}
+                            </span>
+                            <span style={{ fontSize: 8, color: "#f0c040", letterSpacing: 1, flexShrink: 0 }}>
+                              {v.score} pts · {v.hits} ligne{v.hits > 1 ? "s" : ""} retenue{v.hits > 1 ? "s" : ""}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 9, color: "#444", marginBottom: 6 }}>{v.lines.length} lignes</div>
+                          <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                            {v.lines.map(function(l, li) {
+                              return (
+                                <div key={li} style={{ marginBottom: 3 }}>
+                                  <div style={{ fontSize: 12, color: "#ddd", lineHeight: 1.5 }}>{l.o}</div>
+                                  {l.t && <div style={{ fontSize: 11, color: "#888", lineHeight: 1.5 }}>{l.t}</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}
