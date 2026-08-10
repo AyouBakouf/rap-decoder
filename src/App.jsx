@@ -349,6 +349,9 @@ export default function App() {
   var _dal = useState(false), discoAlbumsLoading = _dal[0], setDiscoAlbumsLoading = _dal[1];
   var _dab = useState(null), discoAlbums = _dab[0], setDiscoAlbums = _dab[1];
   var _dsel = useState({}), discoSelected = _dsel[0], setDiscoSelected = _dsel[1];
+  // Sonar rate des projets peu references, et sa reponse varie d'un appel a l'autre :
+  // l'ajout manuel est le seul moyen fiable de completer une discographie.
+  var _dman = useState(""), discoManual = _dman[0], setDiscoManual = _dman[1];
   var _drun = useState(false), discoRunning = _drun[0], setDiscoRunning = _drun[1];
   var _dprog = useState(null), discoProgress = _dprog[0], setDiscoProgress = _dprog[1];
   var _dlog = useState([]), discoLog = _dlog[0], setDiscoLog = _dlog[1];
@@ -534,8 +537,22 @@ export default function App() {
     setDiscoSelected(function(p) { var n = Object.assign({}, p); n[titre] = !n[titre]; return n; });
   };
 
+  // Ajout manuel d'un projet manquant. Coche d'office: si l'utilisateur prend la
+  // peine de le taper, c'est qu'il le veut dans la file.
+  var addDiscoAlbum = function() {
+    var t = discoManual.trim();
+    if (!t) return;
+    var existing = discoAlbums || [];
+    if (!existing.some(function(a) { return norm(a.titre) === norm(t); })) {
+      setDiscoAlbums(existing.concat([{ titre: t, annee: null, manual: true }]));
+    }
+    setDiscoSelected(function(p) { var n = Object.assign({}, p); n[t] = true; return n; });
+    setDiscoManual("");
+  };
+
   var resetDisco = function() {
     setDiscoAlbums(null); setDiscoSelected({}); setDiscoProgress(null); setDiscoLog([]); setDiscoRunning(false);
+    setDiscoManual("");
   };
 
   // Disco en masse: pour chaque album coche, recupere sa tracklist puis decode + "analyser tout"
@@ -1710,15 +1727,43 @@ export default function App() {
                       <div style={{ fontSize: 9, color: "#666", marginBottom: 12 }}>{discoAlbums.length} albums trouves — decoche ceux a exclure</div>
                       {discoAlbums.map(function(a, ai) {
                         return (
-                          <label key={ai} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", marginBottom: 4, background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 4, cursor: "pointer" }}>
+                          <label key={ai} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", marginBottom: 4, background: "#0a0a0a", border: "1px solid " + (a.manual ? "#3a2a10" : "#1a1a1a"), borderRadius: 4, cursor: "pointer" }}>
                             <input type="checkbox" checked={!!discoSelected[a.titre]} onChange={function() { toggleDiscoAlbum(a.titre); }} />
                             <span style={{ fontSize: 12, color: "#ddd", flex: 1 }}>{a.titre}</span>
+                            {a.manual && <span style={{ fontSize: 8, color: "#f0c040", letterSpacing: 1 }}>AJOUTE</span>}
                             {a.annee && <span style={{ fontSize: 10, color: "#555" }}>{a.annee}</span>}
                           </label>
                         );
                       })}
                     </div>
                   )}
+
+                  {/* La recherche rate les projets peu references — et rate aussi, par
+                      intermittence, des projets qu'elle avait trouves a l'appel precedent. */}
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #1a1a1a" }}>
+                    <div style={{ fontSize: 9, color: "#555", marginBottom: 6 }}>Un projet manque ? Ajoute-le a la main.</div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        value={discoManual}
+                        onChange={function(e) { setDiscoManual(e.target.value); }}
+                        onKeyDown={function(e) { if (e.key === "Enter") addDiscoAlbum(); }}
+                        placeholder="Dr. Sophie Said"
+                        style={{
+                          flex: 1, background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 4,
+                          color: "#ddd", fontFamily: "inherit", fontSize: 11, padding: "8px 10px", outline: "none",
+                        }}
+                      />
+                      <button onClick={addDiscoAlbum} disabled={!discoManual.trim()} style={{
+                        background: "transparent", border: "1px solid #3a2a10", borderRadius: 4,
+                        color: discoManual.trim() ? "#f0c040" : "#444", fontFamily: "inherit", fontSize: 9,
+                        padding: "0 14px", cursor: discoManual.trim() ? "pointer" : "default",
+                        letterSpacing: 2, textTransform: "uppercase",
+                      }}>
+                        ajouter
+                      </button>
+                    </div>
+                  </div>
+
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                     <button onClick={resetDisco} style={{
                       background: "transparent", border: "1px solid #2a2a2a", color: "#666",
