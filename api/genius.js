@@ -402,3 +402,7 @@ async function searchGenius(query, artist, token) {
   } catch(e) {}
   return null;
 }
+
+export const config = {
+  maxDuration: 60,
+};

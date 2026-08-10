@@ -1,6 +1,6 @@
 # RAP DECODER 翻
 
-Traducteur rap : paroles + traduction FR + décryptage des refs. Gemini 3 Flash + Google Search. Un album complet pour 7 centimes.
+Traducteur rap : paroles + traduction FR + décryptage des refs. Gemini 2.5 Flash (via OpenRouter) + Perplexity Sonar. Un album complet pour 7 centimes.
 
 <img width="1000" height="1000" alt="image" src="https://github.com/user-attachments/assets/1eb93c6b-b8a4-4d5b-852c-2d99228e5d7a" />
 
@@ -21,13 +21,20 @@ Le rap c'est le genre musical le plus riche en texte qui existe et la plupart de
 
 <img width="500" height="500" alt="image" src="https://github.com/user-attachments/assets/b12d19e0-428f-47db-9a06-a74672f07a36" />
 
-## Déployer (gratuit)
+## Déployer
 
-### 1. Clé API Gemini
+### 1. Clés API
 
-1. Va sur [aistudio.google.com](https://aistudio.google.com)
-2. "Get API key" → Create (gratuit, pas de CB)
-3. Copie la clé (commence par `AIza...`)
+**OpenRouter** (obligatoire — c'est lui qui route vers Gemini et Sonar)
+
+1. Va sur [openrouter.ai/keys](https://openrouter.ai/keys)
+2. Create Key → copie-la (commence par `sk-or-v1-...`)
+3. Crédite le compte (les modèles utilisés sont facturés à l'usage, voir section Coût)
+
+**Genius** (obligatoire — récupération des paroles)
+
+1. Va sur [genius.com/api-clients](https://genius.com/api-clients)
+2. New API Client → génère un **Client Access Token**
 
 ### 2. Push sur GitHub
 
@@ -49,7 +56,13 @@ git push -u origin main
 
 1. Va sur [vercel.com](https://vercel.com) → "Add New Project" → importe le repo
 2. Framework : **Vite**
-3. Environment Variables → `GEMINI_API_KEY` = ta clé
+3. Environment Variables :
+   | Variable | Valeur | Requis |
+   |---|---|---|
+   | `OPENROUTER_API_KEY` | `sk-or-v1-...` | oui |
+   | `GENIUS_API_TOKEN` | ton Client Access Token | oui |
+   | `GEMINI_MODEL` | défaut `google/gemini-2.5-flash` | non |
+   | `DEEPSEEK_MODEL` | défaut `deepseek/deepseek-r1-0528` | non |
 4. Deploy
 
 C'est en ligne.
@@ -66,4 +79,4 @@ C'est en ligne.
 
 - **Frontend** : React + Vite
 - **Backend** : Vercel Serverless Function
-- **API** : Gemini 3 Flash + Google Search
+- **API** : OpenRouter → Gemini 2.5 Flash (décryptage) + Perplexity Sonar (fallback paroles) + Genius (paroles)
