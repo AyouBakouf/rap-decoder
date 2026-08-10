@@ -94,7 +94,11 @@ function cacheGet(artist, name) {
 }
 function cacheSet(artist, name, payload) {
   try {
-    localStorage.setItem(ckey(artist, name), JSON.stringify(payload));
+    // On estampille l'artiste et le titre d'origine dans le payload : la cle ne
+    // conserve que leur version normalisee (minuscules), et la vue par artiste a
+    // besoin des libelles exacts pour afficher ses cartes.
+    var stamped = Object.assign({}, payload, { _a: artist, _t: name });
+    localStorage.setItem(ckey(artist, name), JSON.stringify(stamped));
   } catch (e) {
     // Avant: catch vide, l'ecriture echouait en silence — l'utilisateur payait l'appel API pour
     // une analyse qui ne persistait jamais, sans jamais le savoir. Surtout critique pour la disco
@@ -114,6 +118,82 @@ function tlGet(artist, album) {
 function tlSet(artist, album, tracks) {
   try { localStorage.setItem(tlkey(artist, album), JSON.stringify(tracks)); } catch (e) {}
 }
+// Les best bars etaient jusqu'ici du state React pur : perdus au rechargement, et
+// donc inagregeables. Les persister par album est ce qui rend l'onglet Passages de
+// la vue artiste possible sans relancer un appel API a chaque fois.
+function bbkey(artist, album) { return CV + ":bb:" + norm(artist) + ":" + norm(album); }
+function bbGet(artist, album) {
+  try { var r = localStorage.getItem(bbkey(artist, album)); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+}
+function bbSet(artist, album, bars) {
+  try { localStorage.setItem(bbkey(artist, album), JSON.stringify({ album: album, bars: bars })); } catch (e) {
+    if (e && (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014)) {
+      try { window.dispatchEvent(new CustomEvent("rdc-quota-exceeded")); } catch (e2) {}
+    }
+  }
+}
+
+// Parcourt le localStorage et rend les entrees dont la cle commence par prefix.
+function scanCache(prefix) {
+  var out = [];
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (!k || k.indexOf(prefix) !== 0) continue;
+      try {
+        var v = JSON.parse(localStorage.getItem(k));
+        if (v) out.push({ key: k, tail: k.slice(prefix.length), value: v });
+      } catch (e) {}
+    }
+  } catch (e) {}
+  return out;
+}
+
+// Toutes les lignes retenues (essentiel + notable) de tous les morceaux caches d'un
+// artiste, classees par impact. Le champ impact est note par ANALYSIS_SYSTEM
+// precisement pour etre comparable d'un morceau a l'autre.
+function artistBestLines(artist) {
+  var rows = scanCache(CV + ":song:" + norm(artist) + ":");
+  var out = [];
+  rows.forEach(function(r) {
+    var d = r.value && r.value.d;
+    var a = d && d.analysis;
+    if (!a) return;
+    var track = r.value._t || r.tail;
+    ["essentiel", "notable"].forEach(function(bucket) {
+      (a[bucket] || []).forEach(function(p) {
+        if (!p || !p.o) return;
+        out.push(Object.assign({}, p, { track: track, bucket: bucket, score: a.score }));
+      });
+    });
+  });
+  return out.sort(function(x, y) { return (y.impact || 0) - (x.impact || 0); });
+}
+
+// Idem pour les passages de 4-8 barres, agreges depuis les albums deja extraits.
+function artistBestBars(artist) {
+  var rows = scanCache(CV + ":bb:" + norm(artist) + ":");
+  var out = [];
+  rows.forEach(function(r) {
+    var album = (r.value && r.value.album) || r.tail;
+    ((r.value && r.value.bars) || []).forEach(function(b) {
+      if (b && b.lines && b.lines.length) out.push(Object.assign({}, b, { album: album }));
+    });
+  });
+  return out.sort(function(x, y) { return (y.impact || 0) - (x.impact || 0); });
+}
+
+// De quoi expliquer une vue vide sans laisser l'utilisateur deviner.
+function artistCacheStats(artist) {
+  var songs = scanCache(CV + ":song:" + norm(artist) + ":");
+  var analyzed = songs.filter(function(r) { return r.value && r.value.d && r.value.d.analysis; });
+  return {
+    tracks: songs.length,
+    analyzed: analyzed.length,
+    albumsWithBars: scanCache(CV + ":bb:" + norm(artist) + ":").length,
+  };
+}
+
 function sessionSave(s) { try { localStorage.setItem(CV + ":session", JSON.stringify(s)); } catch (e) {} }
 function sessionLoad() { try { var r = localStorage.getItem(CV + ":session"); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
 function sessionClear() { try { localStorage.removeItem(CV + ":session"); } catch (e) {} }
@@ -259,6 +339,12 @@ export default function App() {
   var _vcl = useState(false), videoCurating = _vcl[0], setVideoCurating = _vcl[1];
   var _vbe = useState(false), videoBruteExpanded = _vbe[0], setVideoBruteExpanded = _vbe[1];
   // Disco en masse
+  // Vue "best of artiste" : pure lecture du cache local, aucun appel API.
+  var _ba = useState(""), bestArtist = _ba[0], setBestArtist = _ba[1];
+  var _bd = useState(null), bestData = _bd[0], setBestData = _bd[1];
+  var _bt = useState("lignes"), bestTab = _bt[0], setBestTab = _bt[1];
+  var _bc = useState(""), bestCopied = _bc[0], setBestCopied = _bc[1];
+
   var _da = useState(""), discoArtist = _da[0], setDiscoArtist = _da[1];
   var _dal = useState(false), discoAlbumsLoading = _dal[0], setDiscoAlbumsLoading = _dal[1];
   var _dab = useState(null), discoAlbums = _dab[0], setDiscoAlbums = _dab[1];
@@ -1146,7 +1232,14 @@ export default function App() {
   // Best Bars: envoie TOUTES les paroles de l'album en un seul appel
   var extractBestBars = async function() {
     setActivePanel('bestBars');
-    if (bestBars) return; // deja fait
+    if (bestBars) return; // deja fait dans cette session
+    // Relire le cache avant de repayer l'appel : l'extraction persiste desormais,
+    // donc un album deja traite dans une session precedente revient gratuitement.
+    var cachedBars = bbGet(artist, album);
+    if (cachedBars && cachedBars.bars && cachedBars.bars.length) {
+      setBestBars(cachedBars.bars);
+      return;
+    }
     setBestBarsLoading(true);
     try {
       var allLyrics = "";
@@ -1162,10 +1255,31 @@ export default function App() {
       var r = await callGemini(BEST_BARS_SYSTEM, "Album: \"" + album + "\" par " + artist + "\n\nPAROLES COMPLETES:\n" + allLyrics, false);
       var bars = (r.bars || []).sort(function(a, b) { return (b.impact || 0) - (a.impact || 0); });
       setBestBars(bars);
+      if (bars.length) bbSet(artist, album, bars);
     } catch (e) {
       setBestBars([]);
     }
     setBestBarsLoading(false);
+  };
+
+  // Best of artiste: agregation du cache, instantanee et gratuite.
+  var loadBestOfArtist = function(name) {
+    var who = (name || bestArtist).trim();
+    if (!who) return;
+    setBestData({
+      artist: who,
+      lines: artistBestLines(who),
+      bars: artistBestBars(who),
+      stats: artistCacheStats(who),
+    });
+  };
+
+  var copyBestLine = function(id, text) {
+    try {
+      navigator.clipboard.writeText(text);
+      setBestCopied(id);
+      setTimeout(function() { setBestCopied(""); }, 2000);
+    } catch (e) {}
   };
 
   // Analyse d'ecriture pour UN son donne (score + selection + multis)
@@ -1279,9 +1393,18 @@ export default function App() {
               color: "#4ade80", fontFamily: "inherit", fontSize: 9,
               padding: "6px 12px", cursor: "pointer",
               letterSpacing: 2, textTransform: "uppercase",
-              marginBottom: 8,
+              marginRight: 8, marginBottom: 8,
             }}>
               ⏣ disco en masse
+            </button>
+            <button onClick={function() { setActivePanel('bestOf'); setView("list"); }} style={{
+              background: "transparent", border: "1px solid #3a2a10", borderRadius: 4,
+              color: "#f0c040", fontFamily: "inherit", fontSize: 9,
+              padding: "6px 12px", cursor: "pointer",
+              letterSpacing: 2, textTransform: "uppercase",
+              marginBottom: 8,
+            }}>
+              ★ best of artiste
             </button>
           </div>
         </div>
@@ -1425,6 +1548,132 @@ export default function App() {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {showDetail && activePanel === 'bestOf' && (
+            <div style={S.detail}>
+              <button onClick={function() { setActivePanel(null); if (!tracks.length) setView("input"); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
+              <div style={S.trackTitle}>★ Best of artiste</div>
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Les meilleures lignes et passages de tout ce que tu as deja decode, classes par impact.</div>
+
+              <Inp label="Artiste" val={bestArtist} set={setBestArtist} ph="billy woods" enter={function() { loadBestOfArtist(); }} />
+              <button onClick={function() { loadBestOfArtist(); }} disabled={!bestArtist.trim()} style={{
+                width: "100%", padding: "12px 0", marginTop: 4,
+                background: !bestArtist.trim() ? "#111" : "#1a1408",
+                color: !bestArtist.trim() ? "#555" : "#f0c040",
+                border: "1px solid #3a2a10", borderRadius: 4,
+                fontFamily: "inherit", fontSize: 11, cursor: "pointer",
+                letterSpacing: 3, textTransform: "uppercase",
+              }}>
+                sortir le best of
+              </button>
+
+              {bestData && (function() {
+                var items = bestTab === "lignes" ? bestData.lines : bestData.bars;
+                var st = bestData.stats;
+                return (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                      {[["lignes", "lignes", bestData.lines.length], ["passages", "passages", bestData.bars.length]].map(function(t) {
+                        var on = bestTab === t[0];
+                        return (
+                          <button key={t[0]} onClick={function() { setBestTab(t[0]); }} style={{
+                            flex: 1, padding: "7px 0",
+                            background: on ? "#1a1408" : "transparent",
+                            color: on ? "#f0c040" : "#555",
+                            border: "1px solid " + (on ? "#3a2a10" : "#1a1a1a"), borderRadius: 4,
+                            fontFamily: "inherit", fontSize: 9, cursor: "pointer",
+                            letterSpacing: 2, textTransform: "uppercase",
+                          }}>
+                            {t[1]} ({t[2]})
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {items.length === 0 && (
+                      <div style={{ padding: "18px 0", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, color: "#777", lineHeight: 1.6, marginBottom: 4 }}>
+                          {bestTab === "lignes"
+                            ? (st.tracks === 0
+                                ? "Rien en cache pour " + bestData.artist + "."
+                                : st.tracks + " morceau(x) en cache, mais " + st.analyzed + " analyse(s).")
+                            : (st.albumsWithBars === 0
+                                ? "Aucun album de " + bestData.artist + " n'a encore eu son extraction de passages."
+                                : "Extractions presentes mais vides.")}
+                        </div>
+                        <div style={{ fontSize: 9, color: "#444", lineHeight: 1.6, marginBottom: 14 }}>
+                          {bestTab === "lignes"
+                            ? "Les lignes viennent de l'analyse d'ecriture, lancee par morceau ou via Best of album."
+                            : "Les passages viennent du bouton Best bars, a lancer une fois par album."}
+                        </div>
+                        <button onClick={function() { setBestArtist(""); setDiscoArtist(bestData.artist); setActivePanel('disco'); }} style={{
+                          background: "transparent", border: "1px solid #1a2a1a", borderRadius: 4,
+                          color: "#4ade80", fontFamily: "inherit", fontSize: 9,
+                          padding: "6px 12px", cursor: "pointer",
+                          letterSpacing: 2, textTransform: "uppercase",
+                        }}>
+                          ⏣ lancer disco en masse
+                        </button>
+                      </div>
+                    )}
+
+                    {items.length > 0 && bestTab === "lignes" && items.map(function(p, i) {
+                      var id = "l" + i;
+                      var txt = p.o + (p.t ? "\n" + p.t : "") + "\n\n(" + bestData.artist + " — " + p.track + ")";
+                      return (
+                        <div key={id} style={{ border: "1px solid #1a1a1a", borderRadius: 4, padding: 10, marginBottom: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 }}>
+                            <span style={{ fontSize: 8, color: "#555", letterSpacing: 1, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.track}</span>
+                            <span style={{ fontSize: 8, color: TYPE_COLORS[p.type] || "#777", letterSpacing: 1, flexShrink: 0 }}>{p.type} · {p.impact}/10</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: "#ddd", lineHeight: 1.5 }}>{p.o}</div>
+                          {p.t && <div style={{ fontSize: 11, color: "#888", lineHeight: 1.5, marginTop: 3 }}>{p.t}</div>}
+                          {p.why && <div style={{ fontSize: 9, color: "#666", fontStyle: "italic", marginTop: 6 }}>{p.why}</div>}
+                          <button onClick={function() { copyBestLine(id, txt); }} style={{
+                            background: "transparent", border: "none", color: bestCopied === id ? "#4ade80" : "#444",
+                            fontFamily: "inherit", fontSize: 8, cursor: "pointer", padding: "6px 0 0",
+                            letterSpacing: 1, textTransform: "uppercase",
+                          }}>
+                            {bestCopied === id ? "✓ copie" : "copier"}
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {items.length > 0 && bestTab === "passages" && items.map(function(b, i) {
+                      var id = "b" + i;
+                      var txt = b.lines.map(function(l) { return l.o + (l.t ? "\n" + l.t : ""); }).join("\n")
+                        + "\n\n(" + bestData.artist + " — " + (b.track || "?") + ", " + b.album + ")";
+                      return (
+                        <div key={id} style={{ border: "1px solid #1a1a1a", borderRadius: 4, padding: 10, marginBottom: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 }}>
+                            <span style={{ fontSize: 8, color: "#555", letterSpacing: 1, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.track} · {b.album}</span>
+                            <span style={{ fontSize: 8, color: TYPE_COLORS[b.type] || "#777", letterSpacing: 1, flexShrink: 0 }}>{b.type} · {b.impact}/10</span>
+                          </div>
+                          {b.lines.map(function(l, li) {
+                            return (
+                              <div key={li} style={{ marginBottom: 3 }}>
+                                <div style={{ fontSize: 12, color: "#ddd", lineHeight: 1.5 }}>{l.o}</div>
+                                {l.t && <div style={{ fontSize: 11, color: "#888", lineHeight: 1.5 }}>{l.t}</div>}
+                              </div>
+                            );
+                          })}
+                          {b.why && <div style={{ fontSize: 9, color: "#666", fontStyle: "italic", marginTop: 6 }}>{b.why}</div>}
+                          <button onClick={function() { copyBestLine(id, txt); }} style={{
+                            background: "transparent", border: "none", color: bestCopied === id ? "#4ade80" : "#444",
+                            fontFamily: "inherit", fontSize: 8, cursor: "pointer", padding: "6px 0 0",
+                            letterSpacing: 1, textTransform: "uppercase",
+                          }}>
+                            {bestCopied === id ? "✓ copie" : "copier"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
