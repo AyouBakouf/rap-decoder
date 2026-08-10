@@ -8,7 +8,18 @@
 export var GOOGLE_DEFAULT_MODEL = "gemini-3.6-flash";
 export var OPENROUTER_DEFAULT_MODEL = "google/gemini-2.5-flash";
 
-export function resolveProvider(env) {
+// Une variable definie mais vide, ou remplie d'espaces, est traitee comme absente :
+// une cle blanche doit faire basculer sur l'autre provider, pas produire un 401.
+function cleanEnv(v) {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+export function resolveProvider(rawEnv) {
+  var env = {
+    GOOGLE_API_KEY: cleanEnv(rawEnv.GOOGLE_API_KEY),
+    OPENROUTER_API_KEY: cleanEnv(rawEnv.OPENROUTER_API_KEY),
+    GEMINI_MODEL: cleanEnv(rawEnv.GEMINI_MODEL),
+  };
   if (env.GOOGLE_API_KEY) {
     return {
       name: "google",
@@ -40,7 +51,9 @@ export default async function handler(req, res) {
     var envSeen = {};
     ["GOOGLE_API_KEY", "OPENROUTER_API_KEY", "GENIUS_API_TOKEN", "GEMINI_MODEL"].forEach(function (k) {
       var v = process.env[k];
-      envSeen[k] = v ? "presente (" + v.length + " car.)" : "ABSENTE";
+      if (v === undefined) envSeen[k] = "ABSENTE (pas definie)";
+      else if (!v.trim()) envSeen[k] = "DEFINIE MAIS VIDE (le champ existe dans Vercel, sans valeur)";
+      else envSeen[k] = "presente (" + v.trim().length + " car.)";
     });
     // Un nom mal orthographie ou mal scope est la cause la plus frequente :
     // lister les variables qui ressemblent a une cle permet de le voir tout de suite.
