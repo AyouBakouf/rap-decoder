@@ -87,65 +87,145 @@ function stripFakeGeniusCitation(obj) {
   };
   return walk(obj);
 }
-function ckey(artist, name) { return CV + ":song:" + norm(artist) + ":" + norm(name); }
-function tlkey(artist, album) { return CV + ":tl:" + norm(artist) + ":" + norm(album); }
-function cacheGet(artist, name) {
-  try { var r = localStorage.getItem(ckey(artist, name)); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+// --- Stockage ---------------------------------------------------------------
+// localStorage plafonne a ~5 Mo par origine, ce qui ne tient pas: un seul album
+// decode+analyse pese lourd (paroles, traduction ligne a ligne, analyse d'ecriture,
+// analyse profonde par ligne) et une discographie remplit le quota avant la fin.
+// On passe donc sur IndexedDB, dont le quota se compte en centaines de Mo.
+//
+// IndexedDB est asynchrone alors que le rendu lit le cache de maniere synchrone a
+// des dizaines d'endroits. Plutot que de tout convertir, on garde une Map en
+// memoire comme source de verite en lecture, hydratee une fois au demarrage, et on
+// ecrit en differe vers IndexedDB.
+var MEM = new Map();
+var IDB_NAME = "rapdecoder", IDB_STORE = "kv", IDB_VERSION = 1;
+var idbPromise = null;
+
+function idbOpen() {
+  if (idbPromise) return idbPromise;
+  idbPromise = new Promise(function(resolve) {
+    try {
+      if (typeof indexedDB === "undefined") return resolve(null);
+      var req = indexedDB.open(IDB_NAME, IDB_VERSION);
+      req.onupgradeneeded = function() {
+        var db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      };
+      req.onsuccess = function() { resolve(req.result); };
+      req.onerror = function() { resolve(null); };
+    } catch (e) { resolve(null); }
+  });
+  return idbPromise;
 }
-function cacheSet(artist, name, payload) {
-  try {
-    // On estampille l'artiste et le titre d'origine dans le payload : la cle ne
-    // conserve que leur version normalisee (minuscules), et la vue par artiste a
-    // besoin des libelles exacts pour afficher ses cartes.
-    var stamped = Object.assign({}, payload, { _a: artist, _t: name });
-    localStorage.setItem(ckey(artist, name), JSON.stringify(stamped));
-  } catch (e) {
-    // Avant: catch vide, l'ecriture echouait en silence — l'utilisateur payait l'appel API pour
-    // une analyse qui ne persistait jamais, sans jamais le savoir. Surtout critique pour la disco
-    // en masse, qui ecrit beaucoup en boucle. On notifie via un event DOM (cacheSet est une
-    // fonction top-level, pas un hook — pas d'acces direct au state React d'ici).
-    if (e && (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014)) {
+
+function idbTx(mode, fn) {
+  return idbOpen().then(function(db) {
+    if (!db) return null;
+    return new Promise(function(resolve, reject) {
+      var tx = db.transaction(IDB_STORE, mode);
+      var store = tx.objectStore(IDB_STORE);
+      var out = fn(store);
+      tx.oncomplete = function() { resolve(out && out.result !== undefined ? out.result : out); };
+      tx.onerror = function() { reject(tx.error); };
+      tx.onabort = function() { reject(tx.error); };
+    });
+  });
+}
+
+// Ecritures serialisees: une file evite d'ouvrir une transaction par morceau
+// pendant la disco en masse, qui ecrit en rafale.
+var writeQueue = Promise.resolve();
+function queueWrite(fn) {
+  writeQueue = writeQueue.then(fn).catch(function(e) {
+    // Le quota reste possible sur IndexedDB, juste bien plus haut. Meme signal
+    // que pour localStorage, la file de disco en masse sait deja s'y arreter.
+    if (e && (e.name === "QuotaExceededError" || e.name === "AbortError")) {
       try { window.dispatchEvent(new CustomEvent("rdc-quota-exceeded")); } catch (e2) {}
     }
-  }
+  });
+  return writeQueue;
 }
-function cacheClear(artist, name) {
-  try { localStorage.removeItem(ckey(artist, name)); } catch (e) {}
+
+function storeGet(k) { return MEM.has(k) ? MEM.get(k) : null; }
+function storeSet(k, v) {
+  MEM.set(k, v);
+  queueWrite(function() { return idbTx("readwrite", function(s) { s.put(v, k); }); });
 }
-function tlGet(artist, album) {
-  try { var r = localStorage.getItem(tlkey(artist, album)); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+function storeDel(k) {
+  MEM.delete(k);
+  queueWrite(function() { return idbTx("readwrite", function(s) { s.delete(k); }); });
 }
-function tlSet(artist, album, tracks) {
-  try { localStorage.setItem(tlkey(artist, album), JSON.stringify(tracks)); } catch (e) {}
+function storeKeys() { return Array.from(MEM.keys()); }
+
+// Hydrate la memoire depuis IndexedDB, puis rapatrie ce qui trainait encore dans
+// localStorage et libere la place occupee la-bas.
+async function hydrateStore() {
+  try {
+    var db = await idbOpen();
+    if (db) {
+      var entries = await new Promise(function(resolve) {
+        try {
+          var tx = db.transaction(IDB_STORE, "readonly");
+          var store = tx.objectStore(IDB_STORE);
+          var kReq = store.getAllKeys(), vReq = store.getAll();
+          tx.oncomplete = function() { resolve([kReq.result || [], vReq.result || []]); };
+          tx.onerror = function() { resolve([[], []]); };
+        } catch (e) { resolve([[], []]); }
+      });
+      for (var i = 0; i < entries[0].length; i++) MEM.set(entries[0][i], entries[1][i]);
+    }
+  } catch (e) {}
+
+  // Migration unique depuis localStorage.
+  try {
+    var legacy = [];
+    for (var j = 0; j < localStorage.length; j++) {
+      var k = localStorage.key(j);
+      if (k && k.indexOf(CV + ":") === 0) legacy.push(k);
+    }
+    for (var m = 0; m < legacy.length; m++) {
+      var key = legacy[m];
+      try {
+        var parsed = JSON.parse(localStorage.getItem(key));
+        if (parsed && !MEM.has(key)) { MEM.set(key, parsed); storeSet(key, parsed); }
+      } catch (e) {}
+    }
+    await writeQueue;
+    // Ne vider localStorage qu'une fois les ecritures IndexedDB confirmees:
+    // c'est ce qui rend les 5 Mo a nouveau disponibles.
+    for (var n = 0; n < legacy.length; n++) {
+      try { localStorage.removeItem(legacy[n]); } catch (e) {}
+    }
+  } catch (e) {}
 }
+
+function ckey(artist, name) { return CV + ":song:" + norm(artist) + ":" + norm(name); }
+function tlkey(artist, album) { return CV + ":tl:" + norm(artist) + ":" + norm(album); }
+function cacheGet(artist, name) { return storeGet(ckey(artist, name)); }
+function cacheSet(artist, name, payload) {
+  // On estampille l'artiste et le titre d'origine dans le payload : la cle ne
+  // conserve que leur version normalisee (minuscules), et la vue par artiste a
+  // besoin des libelles exacts pour afficher ses cartes.
+  storeSet(ckey(artist, name), Object.assign({}, payload, { _a: artist, _t: name }));
+}
+function cacheClear(artist, name) { storeDel(ckey(artist, name)); }
+function tlGet(artist, album) { return storeGet(tlkey(artist, album)); }
+function tlSet(artist, album, tracks) { storeSet(tlkey(artist, album), tracks); }
 // Les best bars etaient jusqu'ici du state React pur : perdus au rechargement, et
 // donc inagregeables. Les persister par album est ce qui rend l'onglet Passages de
 // la vue artiste possible sans relancer un appel API a chaque fois.
 function bbkey(artist, album) { return CV + ":bb:" + norm(artist) + ":" + norm(album); }
-function bbGet(artist, album) {
-  try { var r = localStorage.getItem(bbkey(artist, album)); return r ? JSON.parse(r) : null; } catch (e) { return null; }
-}
-function bbSet(artist, album, bars) {
-  try { localStorage.setItem(bbkey(artist, album), JSON.stringify({ album: album, bars: bars })); } catch (e) {
-    if (e && (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014)) {
-      try { window.dispatchEvent(new CustomEvent("rdc-quota-exceeded")); } catch (e2) {}
-    }
-  }
-}
+function bbGet(artist, album) { return storeGet(bbkey(artist, album)); }
+function bbSet(artist, album, bars) { storeSet(bbkey(artist, album), { album: album, bars: bars }); }
 
-// Parcourt le localStorage et rend les entrees dont la cle commence par prefix.
+// Rend les entrees dont la cle commence par prefix.
 function scanCache(prefix) {
   var out = [];
-  try {
-    for (var i = 0; i < localStorage.length; i++) {
-      var k = localStorage.key(i);
-      if (!k || k.indexOf(prefix) !== 0) continue;
-      try {
-        var v = JSON.parse(localStorage.getItem(k));
-        if (v) out.push({ key: k, tail: k.slice(prefix.length), value: v });
-      } catch (e) {}
-    }
-  } catch (e) {}
+  storeKeys().forEach(function(k) {
+    if (k.indexOf(prefix) !== 0) return;
+    var v = storeGet(k);
+    if (v) out.push({ key: k, tail: k.slice(prefix.length), value: v });
+  });
   return out;
 }
 
@@ -194,9 +274,9 @@ function artistCacheStats(artist) {
   };
 }
 
-function sessionSave(s) { try { localStorage.setItem(CV + ":session", JSON.stringify(s)); } catch (e) {} }
-function sessionLoad() { try { var r = localStorage.getItem(CV + ":session"); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
-function sessionClear() { try { localStorage.removeItem(CV + ":session"); } catch (e) {} }
+function sessionSave(s) { storeSet(CV + ":session", s); }
+function sessionLoad() { return storeGet(CV + ":session"); }
+function sessionClear() { storeDel(CV + ":session"); }
 
 var TRACKLIST_SYSTEM = "Tu donnes les tracklists d'albums. Reponds en JSON: {\"tracks\":[\"titre1\",\"titre2\",...]} Titres exacts, sans featurings. Si inconnu: {\"tracks\":[]}";
 
@@ -345,6 +425,10 @@ export default function App() {
   var _bt = useState("lignes"), bestTab = _bt[0], setBestTab = _bt[1];
   var _bc = useState(""), bestCopied = _bc[0], setBestCopied = _bc[1];
 
+  // Tant que le cache IndexedDB n'est pas charge en memoire, toute lecture
+  // repondrait "rien en cache" et declencherait des redecodages inutiles.
+  var _bo = useState(false), booted = _bo[0], setBooted = _bo[1];
+
   var _da = useState(""), discoArtist = _da[0], setDiscoArtist = _da[1];
   var _dal = useState(false), discoAlbumsLoading = _dal[0], setDiscoAlbumsLoading = _dal[1];
   var _dab = useState(null), discoAlbums = _dab[0], setDiscoAlbums = _dab[1];
@@ -377,18 +461,26 @@ export default function App() {
     setDone(cnt);
   };
 
-  // Au chargement: restaure la derniere session
+  // Au chargement: hydrate le cache depuis IndexedDB AVANT de restaurer la session.
+  // Sans cette attente, sessionLoad et hydrate liraient une memoire encore vide et
+  // l'app croirait n'avoir aucun morceau en cache — donc les redecoderait tous.
   useEffect(function() {
-    var s = sessionLoad();
-    if (s && s.tracks && s.tracks.length) {
-      setMode(s.mode || "album");
-      setArtist(s.artist || "");
-      setAlbum(s.album || "");
-      setSingle(s.single || "");
-      setTracks(s.tracks);
-      hydrate(s.artist, s.tracks);
-      setView("list");
-    }
+    var cancelled = false;
+    hydrateStore().then(function() {
+      if (cancelled) return;
+      setBooted(true);
+      var s = sessionLoad();
+      if (s && s.tracks && s.tracks.length) {
+        setMode(s.mode || "album");
+        setArtist(s.artist || "");
+        setAlbum(s.album || "");
+        setSingle(s.single || "");
+        setTracks(s.tracks);
+        hydrate(s.artist, s.tracks);
+        setView("list");
+      }
+    });
+    return function() { cancelled = true; };
   }, []);
 
   // Sauvegarde la session courante
@@ -911,43 +1003,37 @@ export default function App() {
     setDeepScanRunning(false);
   };
 
-  // Scan localStorage pour trouver tous les albums decodes
+  // Parcourt le cache (memoire, alimentee par IndexedDB) pour trouver tous les albums decodes
   var getCachedAlbums = function() {
     var albums = [];
     var covered = {};
     try {
-      for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        if (k && k.startsWith(CV + ":tl:")) {
-          var parts = k.slice((CV + ":tl:").length).split(":");
-          if (parts.length >= 2) {
-            var a = parts[0], al = parts.slice(1).join(":");
-            var tl = tlGet(a, al);
-            if (tl && tl.length) {
-              // Verifie qu'au moins un son est decode
-              var decoded = tl.filter(function(t) { var c = cacheGet(a, t); return c && c.d; });
-              if (decoded.length > 0) albums.push({ artist: a, album: al, tracks: tl, decoded: decoded.length });
-              tl.forEach(function(t) { covered[norm(a) + "|" + norm(t)] = true; });
-            }
-          }
-        }
-      }
+      var keys = storeKeys();
+      keys.forEach(function(k) {
+        if (k.indexOf(CV + ":tl:") !== 0) return;
+        var parts = k.slice((CV + ":tl:").length).split(":");
+        if (parts.length < 2) return;
+        var a = parts[0], al = parts.slice(1).join(":");
+        var tl = tlGet(a, al);
+        if (!tl || !tl.length) return;
+        // Verifie qu'au moins un son est decode
+        var decoded = tl.filter(function(t) { var c = cacheGet(a, t); return c && c.d; });
+        if (decoded.length > 0) albums.push({ artist: a, album: al, tracks: tl, decoded: decoded.length });
+        tl.forEach(function(t) { covered[norm(a) + "|" + norm(t)] = true; });
+      });
       // Morceaux decodes en mode Single (pas de tracklist, cf. le fix mode==="single" dans decode()):
       // sans ca, ils restent invisibles pour getCachedAlbums() malgre un cache valide, meme ceux
       // decodes/analyses avant ce fix — chacun devient son propre pseudo-album pour rester
       // decouvrable (Video Research notamment).
-      for (var j = 0; j < localStorage.length; j++) {
-        var k2 = localStorage.key(j);
-        if (k2 && k2.startsWith(CV + ":song:")) {
-          var sparts = k2.slice((CV + ":song:").length).split(":");
-          if (sparts.length >= 2) {
-            var sa = sparts[0], sn = sparts.slice(1).join(":");
-            if (covered[sa + "|" + sn]) continue;
-            var sc = cacheGet(sa, sn);
-            if (sc && sc.d) { albums.push({ artist: sa, album: sn, tracks: [sn], decoded: 1 }); covered[sa + "|" + sn] = true; }
-          }
-        }
-      }
+      keys.forEach(function(k2) {
+        if (k2.indexOf(CV + ":song:") !== 0) return;
+        var sparts = k2.slice((CV + ":song:").length).split(":");
+        if (sparts.length < 2) return;
+        var sa = sparts[0], sn = sparts.slice(1).join(":");
+        if (covered[sa + "|" + sn]) return;
+        var sc = cacheGet(sa, sn);
+        if (sc && sc.d) { albums.push({ artist: sa, album: sn, tracks: [sn], decoded: 1 }); covered[sa + "|" + sn] = true; }
+      });
     } catch (e) {}
     return albums;
   };
@@ -1352,6 +1438,15 @@ export default function App() {
   var showSidebar = !isMobile || (!sel && !activePanel);
   var showDetail = !isMobile || sel || activePanel;
   var headerLabel = mode === "single" ? single : album;
+
+  if (!booted) {
+    return (
+      <div style={S.root}>
+        <style>{CSS}</style>
+        <div style={S.center}><div style={S.spinner} /><div style={S.dim}>Chargement du cache...</div></div>
+      </div>
+    );
+  }
 
   return (
     <div style={S.root}>
