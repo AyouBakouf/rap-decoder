@@ -42,7 +42,14 @@ export function resolveProvider(rawEnv) {
 }
 
 export default async function handler(req, res) {
-  var provider = resolveProvider(process.env);
+  // Mode rapide: l'appelant demande explicitement OpenRouter pour cette requete,
+  // pour ne pas subir les 20 req/min du tier gratuit Google. Choix manuel et
+  // ponctuel — surtout pas un repli automatique sur 429, qui reviendrait a tout
+  // payer puisque le quota gratuit est sature en continu pendant une disco en masse.
+  var wantsOpenRouter = req.body && req.body.viaOpenRouter && cleanEnv(process.env.OPENROUTER_API_KEY);
+  var provider = wantsOpenRouter
+    ? resolveProvider({ OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY, GEMINI_MODEL: process.env.GEMINI_MODEL })
+    : resolveProvider(process.env);
   var defaultModel = provider ? provider.model : (process.env.GEMINI_MODEL || "google/gemini-2.5-flash");
 
   if (req.method === 'GET') {
@@ -169,7 +176,13 @@ export default async function handler(req, res) {
     }
 
     var cleaned = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-    res.status(200).json({ text: cleaned, citations: data.citations || null, finishReason: finishReason, substitution: substitution });
+    // Compteurs de tokens remontes tels quels: ils permettent de chiffrer le cout
+    // reel d'un album au lieu de l'estimer.
+    var usage = data.usage ? {
+      in: data.usage.prompt_tokens || 0,
+      out: data.usage.completion_tokens || 0,
+    } : null;
+    res.status(200).json({ text: cleaned, citations: data.citations || null, finishReason: finishReason, substitution: substitution, provider: provider.name, model: model, usage: usage });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

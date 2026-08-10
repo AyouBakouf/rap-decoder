@@ -317,10 +317,27 @@ var VIDEO_CURATE_SYSTEM = "Tu recois un BRIEF de video et une liste de lignes de
 
 var ANALYSIS_SYSTEM = "Tu es un lecteur exigeant de rap lyrical. On te donne les paroles d'un morceau. Tu produis une analyse d'ECRITURE rigoureuse. DETECTE la langue et adapte tes references de gout et tes criteres.\n\nSI RAP ANGLOPHONE: profil RYM (gout: Ka, billy woods, MIKE, Earl, Navy Blue, Mach-Hommy, MF DOOM). Valorise l'understatement, la profondeur, le vecu, l'image qui hante autant que la technique.\n\nSI RAP FRANCAIS: profil amateur de technique et de plume (references: Veust, Limsa d'Aulnay, Infinit', Jeanjass, GAL, Alpha Wann, Nekfeu, Vald, Dinos, Lomepal cote technique). Valorise surtout: la PUNCHLINE (chute qui claque), le WORDPLAY (double sens, calembour, homophonie), les MULTISYLLABIQUES (rimes riches sur plusieurs syllabes), les RIMES INTERNES, l'image qui surprend. Le rap FR de ce niveau se juge d'abord sur la technique et la vanne. Reconnais l'argot et le verlan sans les traiter comme des fautes.\n\nJSON UNIQUEMENT:\n{\n\"score\": 74,\n\"score_breakdown\": {\"economie\": 8, \"imagery\": 7, \"rimes\": 6, \"subversion\": 5, \"profondeur\": 8},\n\"score_note\": \"1 phrase qui justifie la note\",\n\"essentiel\": [{\"o\":\"ligne exacte\",\"t\":\"trad si anglophone, sinon null\",\"why\":\"ce qui rend l'ecriture forte\",\"type\":\"craft\",\"impact\":9}],\n\"notable\": [{\"o\":\"ligne exacte\",\"t\":\"trad ou null\",\"why\":\"...\",\"type\":\"real\",\"impact\":6}],\n\"multis\": [{\"lines\":[\"ligne 1\",\"ligne 2\"],\"rhymed\":[\"syllabes qui riment ligne 1\",\"syllabes qui riment ligne 2\"],\"syllables\": 4, \"note\":\"pourquoi ce schema est fort\",\"impact\":8}]\n}\n\n=== SCORE (A) ===\nNote /100 la QUALITE D'ECRITURE (pas le plaisir d'ecoute, pas la prod). breakdown: 5 axes /10.\n- economie: densite, dire beaucoup en peu\n- imagery: force et originalite des images\n- rimes: complexite et musicalite des schemas (multis, rimes internes) — AXE CENTRAL pour le rap FR technique\n- subversion: capacite a surprendre, punchline inattendue, eviter les cliches\n- profondeur: doubles lectures, double sens, sens qui s'ouvre\nECHELLE (utilise toute la gamme, sois discriminant):\n- 90-100: chef-d'oeuvre d'ecriture\n- 80-89: tres grande ecriture, dense et maitrisee\n- 70-79: bonne ecriture solide, quelques vrais moments\n- 55-69: correct mais sans relief\n- sous 55: ecriture faible, cliches, rimes paresseuses\nUn bon son technique doit pouvoir atteindre 80+. Ne bloque pas tout dans le ventre mou 60-70. Sois discriminant.\n\n=== SELECTION PAR MORCEAU (C) ===\nOn analyse UN morceau en profondeur. Selectionne les lignes INSTAGRAMMABLES: celles qu'on peut poster hors contexte et qui frappent SEULES.\n- \"essentiel\": 2 a 4 lignes. Le cream absolu.\n- \"notable\": 3 a 6 lignes de qualite.\n\nTEST INSTAGRAM: si tu postes cette ligne sur Insta SANS dire de quel son c'est, est-ce que quelqu'un qui l'a jamais entendu va trouver ca fort? Si oui = bonne selection. Si la ligne a besoin du contexte du morceau pour etre impressionnante = NE LA METS PAS.\nEXEMPLE BON a selectionner: 'J'pete un plomb, l'seul noir proche qui me vengera c'est mon flingue' — le double sens frappe seul.\nEXEMPLE MAUVAIS a selectionner: 'Cinq policiers viennent me voir pour me dire: Monsieur vous avez eu raison' — c'est du storytelling, ca marche que dans le morceau. Hors contexte c'est rien.\n\n- Copie \"o\" EXACTEMENT. \"t\": traduction SI anglophone, null si francais.\n- \"why\": 1 phrase COURTE (15 mots max). Dis ce qui claque: le double sens? le wordplay? la chute?\n- types: \"craft\" / \"real\" / \"depth\" / \"subversion\"\n- \"impact\": note 1-10 la force de CETTE LIGNE PRECISE (pas le morceau entier). Ca sert a comparer des lignes de morceaux DIFFERENTS entre elles, donc sois HONNETE et discriminant: 9-10 = ligne qui marquerait meme dans un album d'un autre artiste, 7-8 = tres solide, 5-6 = correct. N'attribue pas 8+ a tout, la plupart des lignes sont 5-7.\n- Rap FR: punchlines et jeux de mots d'abord. Rap US: l'understatement compte autant.\n- INTERDIT: une ligne deja mise dans \"essentiel\" ne doit PAS reapparaitre dans \"notable\", et une ligne/paire de lignes deja utilisee dans \"multis\" ne doit PAS aussi etre copiee dans \"essentiel\" ou \"notable\". Chaque ligne du morceau n'apparait qu'UNE SEULE FOIS dans toute ta reponse, meme si elle merite plusieurs categories — choisis la categorie ou elle est la plus forte.\n\n=== MULTIS (A) ===\nRepere les 2-4 MEILLEURS schemas multisyllabiques: plusieurs syllabes consecutives qui riment entre les lignes. TRES important pour le rap FR technique.\n- \"lines\": lignes concernees (exactes, copiees mot pour mot)\n- \"rhymed\": pour CHAQUE ligne, la SOUS-CHAINE EXACTE qui porte la rime multi. Ce DOIT etre un extrait MOT POUR MOT de la ligne correspondante.\n\nREGLES STRICTES:\nMETHODE: ecris la TRANSCRIPTION PHONETIQUE des deux portions. Si les sons finaux ne matchent PAS, c'est PAS un multi. Dans le doute, NE METS PAS.\n\n1. Les 2+ dernieres syllabes des portions doivent sonner PAREIL. Pas 'similaire', PAREIL.\n2. INTERDIT: meme famille/racine ('soumis'/'soumission', 'sentiments'/'desensibilisation').\n3. INTERDIT: une ligne dans plus d'UN multi.\n4. Chaque \"rhymed\" = 2+ mots consecutifs, pas un mot seul.\n5. EXEMPLES FAUX (NE FAIS PAS CA):\n   'vers les interdits'/'dites-nous pourquoi' → -di/-kwa = RIME PAS\n   'fais manger'/'en argent' → -je/-an = RIME PAS\n   'etre blessant'/'respecte leur vie' → -an/-i = RIME PAS\n   'de nouveau'/'es possedee' → -vo/-de = RIME PAS\n6. EXEMPLES VRAIS:\n   'bouts d'chaines'/'propre budget' → -en/-e = sons proches, OK\n   'mon or'/'lion mort' → -on or/-on or = IDENTIQUE, OK\n   'en cavale'/'festival' → -val/-val = IDENTIQUE, OK\n- \"syllables\": nombre de syllabes qui riment\n- \"note\": pourquoi c'est technique/reussi\n- \"impact\": note 1-10 la force de CE schema precis, meme echelle que essentiel (9-10 rare, la plupart 5-7). Sert a comparer avec des lignes d'autres morceaux.\nSi pas de vrais multis, multis=[]. N'INVENTE PAS de fausses rimes. Mieux vaut 0 multi que 4 faux.\n\nQUALITE > QUANTITE partout.\n\nSTYLE: ecris tes explications (why, score_note, note) dans un francais NATUREL et fluide, comme un vrai passionne de rap qui parle. TOUJOURS en francais, MEME pour un morceau anglophone (seul le champ \"o\" garde la langue originale, et \"t\" la traduction). Phrases bien construites, pas de tournures bizarres.";
 
+// Mode rapide: choix MANUEL et ponctuel d'envoyer les appels chez OpenRouter pour
+// echapper aux 20 requetes/minute du tier gratuit Google. Volontairement pas un
+// repli automatique sur 429 — pendant une disco en masse le quota gratuit est
+// sature en continu, donc un repli automatique reviendrait a tout payer.
+var TURBO = false;
+function setTurbo(v) { TURBO = !!v; }
+
+// Compteur de tokens cumules, pour chiffrer un album au lieu de l'estimer.
+// On separe les tokens factures de ceux passes par le tier gratuit: seuls les
+// premiers coutent quelque chose.
+var TOKENS = { in: 0, out: 0, calls: 0, paidIn: 0, paidOut: 0 };
+function tokensSnapshot() { return Object.assign({}, TOKENS); }
+function tokensReset() { TOKENS = { in: 0, out: 0, calls: 0, paidIn: 0, paidOut: 0 }; }
+// Tarif OpenRouter de google/gemini-2.5-flash, releve sur leur API.
+function paidCostUsd(t) { return (t.paidIn / 1e6) * 0.30 + (t.paidOut / 1e6) * 2.50; }
+
 async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
   if (_retries === undefined) _retries = 0;
   var payload = { system: system, message: message, search: search };
+  if (TURBO) payload.viaOpenRouter = true;
   if (model) payload.model = model;
   var res = await fetch("/api/gemini", {
     method: "POST",
@@ -339,6 +356,15 @@ async function callGemini(system, message, search, model, _retries) {
     return callGemini(system, message, search, model, _retries + 1);
   }
   if (data.error) throw new Error(data.error);
+  if (data.usage) {
+    TOKENS.in += data.usage.in || 0;
+    TOKENS.out += data.usage.out || 0;
+    TOKENS.calls += 1;
+    if (data.provider === "openrouter") {
+      TOKENS.paidIn += data.usage.in || 0;
+      TOKENS.paidOut += data.usage.out || 0;
+    }
+  }
   var text = data.text || "";
   var m = text.match(/\{[\s\S]*\}/);
   // finishReason "length" = le modele a ete coupe par la limite de tokens avant la fin du JSON —
@@ -440,6 +466,8 @@ export default function App() {
   // Sonar rate des projets peu references, et sa reponse varie d'un appel a l'autre :
   // l'ajout manuel est le seul moyen fiable de completer une discographie.
   var _dman = useState(""), discoManual = _dman[0], setDiscoManual = _dman[1];
+  var _tb = useState(false), turbo = _tb[0], _setTurbo = _tb[1];
+  var _tk = useState(null), tokenStats = _tk[0], setTokenStats = _tk[1];
   var _drun = useState(false), discoRunning = _drun[0], setDiscoRunning = _drun[1];
   var _dprog = useState(null), discoProgress = _dprog[0], setDiscoProgress = _dprog[1];
   var _dlog = useState([]), discoLog = _dlog[0], setDiscoLog = _dlog[1];
@@ -704,6 +732,7 @@ export default function App() {
         // lignes coutait 16 appels d'analyse pour 3 de decodage, soit ~800 appels pour
         // une discographie de trois albums. Elle reste disponible a la demande sur un
         // morceau precis, la ou on la lit vraiment.
+        setTokenStats(tokensSnapshot());
       }
     }
     setDiscoRunning(false);
@@ -1790,6 +1819,18 @@ export default function App() {
                     </div>
                   )}
 
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 14, padding: "9px 10px", background: turbo ? "#1a1408" : "#0a0a0a", border: "1px solid " + (turbo ? "#3a2a10" : "#1a1a1a"), borderRadius: 4, cursor: "pointer" }}>
+                    <input type="checkbox" checked={turbo} onChange={function(e) { _setTurbo(e.target.checked); setTurbo(e.target.checked); }} style={{ marginTop: 2 }} />
+                    <span style={{ flex: 1 }}>
+                      <span style={{ fontSize: 11, color: turbo ? "#f0c040" : "#999" }}>Mode rapide (payant)</span>
+                      <span style={{ display: "block", fontSize: 9, color: "#555", lineHeight: 1.5, marginTop: 3 }}>
+                        Passe par OpenRouter au lieu du gratuit Google, qui plafonne a 20 requetes/minute
+                        et impose ~48s d'attente des qu'il sature. Compte ~0,10 a 0,15 $ l'album.
+                        Laisse decoche si tu n'es pas presse.
+                      </span>
+                    </span>
+                  </label>
+
                   {/* La recherche rate les projets peu references — et rate aussi, par
                       intermittence, des projets qu'elle avait trouves a l'appel precedent. */}
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #1a1a1a" }}>
@@ -1853,6 +1894,14 @@ export default function App() {
                     {discoProgress.lineTotal > 0 && (
                       <div style={{ fontSize: 9, color: "#666" }}>
                         lignes analysees {discoProgress.lineDone}/{discoProgress.lineTotal}
+                      </div>
+                    )}
+                    {tokenStats && tokenStats.calls > 0 && (
+                      <div style={{ fontSize: 9, color: "#555", marginTop: 6, paddingTop: 6, borderTop: "1px solid #1a1a1a" }}>
+                        {tokenStats.calls} appels · {Math.round((tokenStats.in + tokenStats.out) / 1000)}k tokens
+                        {tokenStats.paidOut > 0
+                          ? <span style={{ color: "#f0c040" }}> · facture ~{paidCostUsd(tokenStats).toFixed(3)} $</span>
+                          : <span style={{ color: "#4ade80" }}> · gratuit</span>}
                       </div>
                     )}
                   </div>
