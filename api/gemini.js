@@ -2,14 +2,19 @@
 //  - Google AI Studio en direct (GOOGLE_API_KEY) : tier gratuit, prioritaire
 //  - OpenRouter (OPENROUTER_API_KEY) : payant, utilise en repli
 // Google nomme ses modeles "gemini-2.5-flash", OpenRouter "google/gemini-2.5-flash".
+// Defauts distincts par provider : Google ferme ses modeles 2.x aux nouveaux
+// projets ("no longer available to new users"), donc un projet cree aujourd'hui
+// doit viser la generation 3.x. OpenRouter continue de servir 2.5-flash.
+export var GOOGLE_DEFAULT_MODEL = "gemini-3.6-flash";
+export var OPENROUTER_DEFAULT_MODEL = "google/gemini-2.5-flash";
+
 export function resolveProvider(env) {
-  var model = env.GEMINI_MODEL || "google/gemini-2.5-flash";
   if (env.GOOGLE_API_KEY) {
     return {
       name: "google",
       apiKey: env.GOOGLE_API_KEY,
       url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      model: model.replace(/^google\//, ""),
+      model: (env.GEMINI_MODEL || GOOGLE_DEFAULT_MODEL).replace(/^google\//, ""),
       headers: {},
     };
   }
@@ -18,7 +23,7 @@ export function resolveProvider(env) {
       name: "openrouter",
       apiKey: env.OPENROUTER_API_KEY,
       url: "https://openrouter.ai/api/v1/chat/completions",
-      model: model,
+      model: env.GEMINI_MODEL || OPENROUTER_DEFAULT_MODEL,
       headers: { 'HTTP-Referer': 'https://rap-decoder.vercel.app', 'X-Title': 'Rap Decoder' },
     };
   }

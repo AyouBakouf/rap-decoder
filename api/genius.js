@@ -291,8 +291,14 @@ async function askSonarForUrls(artist, title, dbg) {
 
 // Gemini natif (pas l'endpoint OpenAI-compat) : seul lui expose l'outil google_search,
 // et les URL sources remontent dans groundingMetadata en plus du texte.
+//
+// ATTENTION : google_search a un quota distinct de celui du modele, et il est nul
+// sur le tier gratuit AI Studio (verifie le 2026-08-10 : le meme modele repond 200
+// sans l'outil et 429 avec). Ce chemin ne rend donc service que sur un projet
+// facture. Sans quota il renvoie [] et le scraping direct reste seul en lice.
+// Garder le defaut aligne sur GOOGLE_DEFAULT_MODEL dans api/gemini.js.
 async function askGeminiForUrls(artist, title, dbg) {
-  var model = (process.env.GEMINI_MODEL || "gemini-2.5-flash").replace(/^google\//, "");
+  var model = (process.env.GEMINI_MODEL || "gemini-3.6-flash").replace(/^google\//, "");
   try {
     var r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
       method: "POST",
@@ -302,7 +308,10 @@ async function askGeminiForUrls(artist, title, dbg) {
         tools: [{ google_search: {} }],
       }),
     });
-    if (!r.ok) { if (dbg) dbg.push("gemini_ask: http=" + r.status); return []; }
+    if (!r.ok) {
+      if (dbg) dbg.push("gemini_ask: http=" + r.status + (r.status === 429 ? " (quota google_search epuise — normal sur le tier gratuit)" : ""));
+      return [];
+    }
     var data = await r.json();
     var cand = data.candidates && data.candidates[0];
     if (!cand) { if (dbg) dbg.push("gemini_ask: reponse vide"); return []; }

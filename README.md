@@ -41,7 +41,7 @@ Le rap c'est le genre musical le plus riche en texte qui existe et la plupart de
 2. Create Key → copie-la (commence par `sk-or-v1-...`)
 3. Crédite le compte (facturé à l'usage, voir section Coût)
 
-Sans OpenRouter, le fallback paroles bascule de Perplexity Sonar vers Gemini + Google Search — un peu moins bon sur les artistes très underground.
+Sans OpenRouter, le fallback paroles bascule de Perplexity Sonar vers Gemini + Google Search. Attention : l'outil `google_search` a un quota séparé de celui du modèle, et il est **nul sur le tier gratuit**. Sur une clé Google gratuite, le décodage marche parfaitement mais la recherche de paroles retombe sur le seul scraping direct — c'est-à-dire dégradée pour les artistes peu référencés.
 
 **Genius** (obligatoire — récupération des paroles)
 
@@ -74,7 +74,7 @@ git push -u origin main
    | `GOOGLE_API_KEY` | `AIza...` | une des deux |
    | `OPENROUTER_API_KEY` | `sk-or-v1-...` | une des deux |
    | `GENIUS_API_TOKEN` | ton Client Access Token | oui |
-   | `GEMINI_MODEL` | défaut `gemini-2.5-flash` | non |
+   | `GEMINI_MODEL` | défaut `gemini-3.6-flash` (Google) / `google/gemini-2.5-flash` (OpenRouter) | non |
    | `DEEPSEEK_MODEL` | défaut `deepseek/deepseek-r1-0528` | non |
 4. Deploy
 
