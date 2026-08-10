@@ -581,7 +581,7 @@ export default function App() {
     if (cached && cached.d && cached.d.lines && cached.d.lines.length) return { ok: true, skipped: true };
     try {
       var genius = await fetchLyrics(name, artist, albumParam || "");
-      var decoded = false, r = null;
+      var decoded = false, r = null, transErr = null, fallbackErr = null;
       if (genius.found) {
         try {
           var prompt = "Voici les paroles EXACTES de \"" + name + "\" par " + artist + " (source: lrclib).\nCopie chaque ligne originale mot pour mot dans le champ \"o\". Ne modifie rien.\n\nPAROLES:\n\n" + genius.lyrics;
@@ -590,15 +590,24 @@ export default function App() {
           r._source = genius.source;
           r._geniusId = genius.geniusId || null;
           decoded = !!(r.lines && r.lines.length);
-        } catch (e2) {}
+        } catch (e2) { transErr = e2 && e2.message ? e2.message : String(e2); }
       }
       if (!decoded) {
         try {
           var r2 = await callGemini(LLM_FALLBACK_SYSTEM, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", false, "perplexity/sonar");
           if (r2.found && r2.lines && r2.lines.length > 3) { r = r2; r._source = "llm-recall"; decoded = true; }
-        } catch (e3) {}
+        } catch (e3) { fallbackErr = e3 && e3.message ? e3.message : String(e3); }
       }
-      if (!decoded || !r) return { ok: false, error: "paroles introuvables" };
+      if (!decoded || !r) {
+        // Ces erreurs etaient avalees par des catch vides, si bien qu'un echec de
+        // TRADUCTION (limite de debit en tete) etait rapporte comme des "paroles
+        // introuvables". Le diagnostic partait alors sur la mauvaise piste alors
+        // que les paroles avaient bel et bien ete recuperees.
+        if (genius.found) {
+          return { ok: false, error: "paroles OK (" + (genius.lyrics || "").length + " car.) mais traduction echouee : " + (transErr || fallbackErr || "raison inconnue") };
+        }
+        return { ok: false, error: "paroles introuvables" + (fallbackErr ? " (repli: " + fallbackErr + ")" : "") };
+      }
       cacheSet(artist, name, { d: r });
       return { ok: true };
     } catch (e) {
