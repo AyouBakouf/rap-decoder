@@ -686,9 +686,11 @@ export default function App() {
         var dres = await decodeTrackToCache(discoArtist, track, alb.titre);
         if (!dres.ok) { addLog("⚠ " + alb.titre + " — " + track + " : " + (dres.error || "echec")); continue; }
         if (!dres.skipped) { await fetchContextToCache(discoArtist, track, alb.titre); }
-        await analyzeTrackAllLinesToCache(discoArtist, track, alb.titre, function(done, total) {
-          setDiscoProgress(function(p) { return Object.assign({}, p, { lineDone: done, lineTotal: total }); });
-        });
+        // L'analyse profonde ligne par ligne n'est PAS lancee ici. Par lots de 5 et en
+        // sequentiel, elle representait a elle seule ~85% des appels: un morceau de 80
+        // lignes coutait 16 appels d'analyse pour 3 de decodage, soit ~800 appels pour
+        // une discographie de trois albums. Elle reste disponible a la demande sur un
+        // morceau precis, la ou on la lit vraiment.
       }
     }
     setDiscoRunning(false);
@@ -1735,7 +1737,7 @@ export default function App() {
             <div style={S.detail}>
               <button onClick={function() { setActivePanel(null); if (!tracks.length) setView("input"); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>⏣ Disco en masse</div>
-              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Decode et analyse toute la discographie d'un artiste, album par album.</div>
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>Decode et traduit toute la discographie d'un artiste, album par album. L'analyse ligne par ligne se lance ensuite a la demande, sur le morceau que tu ouvres.</div>
 
               {!discoAlbums && (
                 <div>
