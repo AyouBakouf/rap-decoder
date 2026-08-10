@@ -25,11 +25,23 @@ Le rap c'est le genre musical le plus riche en texte qui existe et la plupart de
 
 ### 1. Clés API
 
-**OpenRouter** (obligatoire — c'est lui qui route vers Gemini et Sonar)
+**Le décodage** (il en faut une des deux, `GOOGLE_API_KEY` prioritaire)
+
+*Option gratuite — Google AI Studio*
+
+1. Va sur [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. Create API key → copie-la (commence par `AIza...`)
+3. Tier gratuit, pas de carte bancaire
+
+> Un abonnement Gemini Pro ne remplace **pas** cette clé : il n'ouvre aucun quota API, il ne vaut que dans l'interface AI Studio et l'app Gemini.
+
+*Option payante — OpenRouter*
 
 1. Va sur [openrouter.ai/keys](https://openrouter.ai/keys)
 2. Create Key → copie-la (commence par `sk-or-v1-...`)
-3. Crédite le compte (les modèles utilisés sont facturés à l'usage, voir section Coût)
+3. Crédite le compte (facturé à l'usage, voir section Coût)
+
+Sans OpenRouter, le fallback paroles bascule de Perplexity Sonar vers Gemini + Google Search — un peu moins bon sur les artistes très underground.
 
 **Genius** (obligatoire — récupération des paroles)
 
@@ -59,9 +71,10 @@ git push -u origin main
 3. Environment Variables :
    | Variable | Valeur | Requis |
    |---|---|---|
-   | `OPENROUTER_API_KEY` | `sk-or-v1-...` | oui |
+   | `GOOGLE_API_KEY` | `AIza...` | une des deux |
+   | `OPENROUTER_API_KEY` | `sk-or-v1-...` | une des deux |
    | `GENIUS_API_TOKEN` | ton Client Access Token | oui |
-   | `GEMINI_MODEL` | défaut `google/gemini-2.5-flash` | non |
+   | `GEMINI_MODEL` | défaut `gemini-2.5-flash` | non |
    | `DEEPSEEK_MODEL` | défaut `deepseek/deepseek-r1-0528` | non |
 4. Deploy
 

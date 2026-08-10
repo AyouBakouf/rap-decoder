@@ -237,33 +237,87 @@ async function fetchFromParolesMusique(artist, title) {
     return { lyrics: "", url: url, status: r.status };
   } catch(e) { return { lyrics: "", url: "", status: 0 }; }
 }
+var LYRICS_URL_PROMPT_PREFIX = "Trouve une page web contenant les paroles completes de \"";
+var LYRICS_URL_PROMPT_SUFFIX = "\". Donne-moi UNIQUEMENT l'URL de la page (pas les paroles). Une seule URL, rien d'autre.";
+
+function lyricsUrlPrompt(artist, title) {
+  return LYRICS_URL_PROMPT_PREFIX + title + "\" par " + artist + LYRICS_URL_PROMPT_SUFFIX;
+}
+
+// Demande a un moteur de recherche LLM l'URL d'une page de paroles, puis la scrape.
+// Sonar (via OpenRouter) si dispo, sinon Gemini + Google Search grounding sur le
+// tier gratuit AI Studio. Sans aucune cle, on degrade silencieusement.
 async function fetchFromSonar(artist, title, dbg) {
-  var apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return "";
+  var urls = [];
+  if (process.env.OPENROUTER_API_KEY) {
+    urls = await askSonarForUrls(artist, title, dbg);
+  } else if (process.env.GOOGLE_API_KEY) {
+    urls = await askGeminiForUrls(artist, title, dbg);
+  } else {
+    if (dbg) dbg.push("sonar_ask: aucune cle (OPENROUTER_API_KEY / GOOGLE_API_KEY)");
+    return "";
+  }
+  if (!urls.length) { if (dbg) dbg.push("sonar_ask: pas d'URL trouvee"); return ""; }
+  for (var i = 0; i < urls.length && i < 3; i++) {
+    var u = urls[i].replace(/[.,;:!?]+$/, "");
+    var scraped = await scrapeGenericLyrics(u);
+    if (dbg) dbg.push("sonar_scrape[" + u + "]: http=" + scraped.status + " | htmlLen=" + scraped.htmlLen + " | method=" + scraped.method + " | textLen=" + scraped.text.length);
+    if (scraped.text && scraped.text.length > 100) return scraped.text;
+  }
+  return "";
+}
+
+function extractUrls(text) {
+  return (text || "").match(/https?:\/\/[^\s\)\]"<>]+/g) || [];
+}
+
+async function askSonarForUrls(artist, title, dbg) {
   try {
     var r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + process.env.OPENROUTER_API_KEY },
       body: JSON.stringify({
         model: "perplexity/sonar",
-        messages: [{ role: "user", content: "Trouve une page web contenant les paroles completes de \"" + title + "\" par " + artist + ". Donne-moi UNIQUEMENT l'URL de la page (pas les paroles). Une seule URL, rien d'autre." }],
+        messages: [{ role: "user", content: lyricsUrlPrompt(artist, title) }],
         max_tokens: 300,
       }),
     });
-    if (!r.ok) { if (dbg) dbg.push("sonar_ask: http=" + r.status); return ""; }
+    if (!r.ok) { if (dbg) dbg.push("sonar_ask: http=" + r.status); return []; }
     var data = await r.json();
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) { if (dbg) dbg.push("sonar_ask: reponse vide"); return ""; }
-    var text = (data.choices[0].message.content || "").trim();
-    var urls = text.match(/https?:\/\/[^\s\)\]"<>]+/g);
-    if (!urls || !urls.length) { if (dbg) dbg.push("sonar_ask: pas d'URL trouvee"); return ""; }
-    for (var i = 0; i < urls.length && i < 3; i++) {
-      var u = urls[i].replace(/[.,;:!?]+$/, "");
-      var scraped = await scrapeGenericLyrics(u);
-      if (dbg) dbg.push("sonar_scrape[" + u + "]: http=" + scraped.status + " | htmlLen=" + scraped.htmlLen + " | method=" + scraped.method + " | textLen=" + scraped.text.length);
-      if (scraped.text && scraped.text.length > 100) return scraped.text;
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) { if (dbg) dbg.push("sonar_ask: reponse vide"); return []; }
+    return extractUrls(data.choices[0].message.content);
+  } catch(e) { if (dbg) dbg.push("sonar_ask: exception " + e.message); return []; }
+}
+
+// Gemini natif (pas l'endpoint OpenAI-compat) : seul lui expose l'outil google_search,
+// et les URL sources remontent dans groundingMetadata en plus du texte.
+async function askGeminiForUrls(artist, title, dbg) {
+  var model = (process.env.GEMINI_MODEL || "gemini-2.5-flash").replace(/^google\//, "");
+  try {
+    var r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GOOGLE_API_KEY },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: lyricsUrlPrompt(artist, title) }] }],
+        tools: [{ google_search: {} }],
+      }),
+    });
+    if (!r.ok) { if (dbg) dbg.push("gemini_ask: http=" + r.status); return []; }
+    var data = await r.json();
+    var cand = data.candidates && data.candidates[0];
+    if (!cand) { if (dbg) dbg.push("gemini_ask: reponse vide"); return []; }
+    var text = "";
+    var parts = cand.content && cand.content.parts ? cand.content.parts : [];
+    for (var i = 0; i < parts.length; i++) text += parts[i].text || "";
+    var urls = extractUrls(text);
+    // Les liens de grounding sont des redirections vertexaisearch : utiles en secours seulement.
+    var chunks = cand.groundingMetadata && cand.groundingMetadata.groundingChunks ? cand.groundingMetadata.groundingChunks : [];
+    for (var j = 0; j < chunks.length; j++) {
+      if (chunks[j].web && chunks[j].web.uri) urls.push(chunks[j].web.uri);
     }
-  } catch(e) { if (dbg) dbg.push("sonar_scrape: exception " + e.message); }
-  return "";
+    if (dbg) dbg.push("gemini_ask: " + urls.length + " URL(s)");
+    return urls;
+  } catch(e) { if (dbg) dbg.push("gemini_ask: exception " + e.message); return []; }
 }
 async function scrapeGenericLyrics(url) {
   var out = { text: "", status: 0, htmlLen: 0, method: "none" };
