@@ -1438,6 +1438,9 @@ export default function App() {
   var showSidebar = !isMobile || (!sel && !activePanel);
   var showDetail = !isMobile || sel || activePanel;
   var headerLabel = mode === "single" ? single : album;
+  // 3e zone: le contenu annexe (contexte d'album). Sur mobile il n'y a pas la
+  // place pour une colonne de plus, le contexte y reste dans le flux principal.
+  var showAnnex = !isMobile && mode === "album" && !!(albumCtx || albumCtxLoading);
 
   if (!booted) {
     return (
@@ -1546,67 +1549,6 @@ export default function App() {
                   </button>
                 )}
               </div>
-              {mode === "album" && (albumCtx || albumCtxLoading) && (
-                <div style={{ margin: "0 12px 10px", padding: "10px 12px", background: "#0a0a0f", border: "1px solid #1a1a2a", borderRadius: 6 }}>
-                  {albumCtxLoading && !albumCtx && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={Object.assign({}, S.spinner, { width: 10, height: 10, margin: 0 })} />
-                      <span style={{ fontSize: 9, color: "#555" }}>contexte album...</span>
-                    </div>
-                  )}
-                  {albumCtx && (function() {
-                    var aYear = realVal(albumCtx.year), aLabel = realVal(albumCtx.label), aEra = realVal(albumCtx.era);
-                    var aSummary = realVal(albumCtx.summary), aBackstory = realVal(albumCtx.backstory), aImportance = realVal(albumCtx.importance);
-                    var aInfluencesRaw = realVal(albumCtx.influences);
-                    var aInfluences = isGenericFillerInfluence(aInfluencesRaw, artist) ? null : aInfluencesRaw;
-                    return (
-                    <div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginBottom: 6, fontSize: 10 }}>
-                        {aYear && <span style={{ color: "#f0c040" }}>{aYear}</span>}
-                        {aLabel && <span style={{ color: "#555" }}>{aLabel}</span>}
-                        {aEra && <span style={{ color: "#38bdf8" }}>{aEra}</span>}
-                      </div>
-                      {albumCtx.themes && albumCtx.themes.length > 0 && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
-                          {albumCtx.themes.map(function(th, ti) {
-                            return <span key={ti} style={{ fontSize: 9, color: "#a855f7", background: "#a855f712", padding: "2px 6px", borderRadius: 3 }}>{th}</span>;
-                          })}
-                        </div>
-                      )}
-                      {aSummary && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5, marginBottom: 6 }}>{stripCitationMarks(aSummary)}</div>}
-                      {aBackstory && (
-                        <div style={{ borderLeft: "2px solid #e05030", paddingLeft: 8, marginBottom: 8 }}>
-                          <div style={{ fontSize: 8, color: "#e05030", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>contexte perso</div>
-                          <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{stripCitationMarks(aBackstory)}</div>
-                        </div>
-                      )}
-                      {aInfluences && (
-                        <div style={{ borderLeft: "2px solid #4ade80", paddingLeft: 8, marginBottom: 8 }}>
-                          <div style={{ fontSize: 8, color: "#4ade80", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>influence notable</div>
-                          <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{stripCitationMarks(aInfluences)}</div>
-                        </div>
-                      )}
-                      {aImportance && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{stripCitationMarks(aImportance)}</div>}
-                      {albumCtx.producers && albumCtx.producers.length > 0 && (
-                        <div style={{ fontSize: 9, color: "#444", marginTop: 6 }}>prod: {albumCtx.producers.join(", ")}</div>
-                      )}
-                      {albumCtx._citations && albumCtx._citations.length > 0 && (
-                        <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #1a1a2a", display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {albumCtx._citations.map(function(url, ci) {
-                            return <a key={ci} href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 8, color: "#444", textDecoration: "none" }}>[{ci + 1}]</a>;
-                          })}
-                        </div>
-                      )}
-                      {albumCtx._ungrounded && (
-                        <div title={albumCtx._ungrounded} style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #3a2a1a", fontSize: 9, color: "#c08040", lineHeight: 1.4 }}>
-                          ⚠ non verifie — repondu de memoire, sans recherche web. A recouper.
-                        </div>
-                      )}
-                    </div>
-                    );
-                  })()}
-                </div>
-              )}
               {tracks.map(function(t, i) {
                 var st = (data[t] && data[t].st) || "idle";
                 var isSel = sel === t;
@@ -2655,6 +2597,71 @@ export default function App() {
               )}
             </div>
           )}
+          {showAnnex && (
+            <div style={S.annex}>
+              {mode === "album" && (albumCtx || albumCtxLoading) && (
+                <div style={{ margin: "0 12px 10px", padding: "10px 12px", background: "#0a0a0f", border: "1px solid #1a1a2a", borderRadius: 6 }}>
+                  {albumCtxLoading && !albumCtx && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={Object.assign({}, S.spinner, { width: 10, height: 10, margin: 0 })} />
+                      <span style={{ fontSize: 9, color: "#555" }}>contexte album...</span>
+                    </div>
+                  )}
+                  {albumCtx && (function() {
+                    var aYear = realVal(albumCtx.year), aLabel = realVal(albumCtx.label), aEra = realVal(albumCtx.era);
+                    var aSummary = realVal(albumCtx.summary), aBackstory = realVal(albumCtx.backstory), aImportance = realVal(albumCtx.importance);
+                    var aInfluencesRaw = realVal(albumCtx.influences);
+                    var aInfluences = isGenericFillerInfluence(aInfluencesRaw, artist) ? null : aInfluencesRaw;
+                    return (
+                    <div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginBottom: 6, fontSize: 10 }}>
+                        {aYear && <span style={{ color: "#f0c040" }}>{aYear}</span>}
+                        {aLabel && <span style={{ color: "#555" }}>{aLabel}</span>}
+                        {aEra && <span style={{ color: "#38bdf8" }}>{aEra}</span>}
+                      </div>
+                      {albumCtx.themes && albumCtx.themes.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+                          {albumCtx.themes.map(function(th, ti) {
+                            return <span key={ti} style={{ fontSize: 9, color: "#a855f7", background: "#a855f712", padding: "2px 6px", borderRadius: 3 }}>{th}</span>;
+                          })}
+                        </div>
+                      )}
+                      {aSummary && <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5, marginBottom: 6 }}>{stripCitationMarks(aSummary)}</div>}
+                      {aBackstory && (
+                        <div style={{ borderLeft: "2px solid #e05030", paddingLeft: 8, marginBottom: 8 }}>
+                          <div style={{ fontSize: 8, color: "#e05030", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>contexte perso</div>
+                          <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{stripCitationMarks(aBackstory)}</div>
+                        </div>
+                      )}
+                      {aInfluences && (
+                        <div style={{ borderLeft: "2px solid #4ade80", paddingLeft: 8, marginBottom: 8 }}>
+                          <div style={{ fontSize: 8, color: "#4ade80", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>influence notable</div>
+                          <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{stripCitationMarks(aInfluences)}</div>
+                        </div>
+                      )}
+                      {aImportance && <div style={{ fontSize: 10, color: "#777", lineHeight: 1.4, fontStyle: "italic" }}>{stripCitationMarks(aImportance)}</div>}
+                      {albumCtx.producers && albumCtx.producers.length > 0 && (
+                        <div style={{ fontSize: 9, color: "#444", marginTop: 6 }}>prod: {albumCtx.producers.join(", ")}</div>
+                      )}
+                      {albumCtx._citations && albumCtx._citations.length > 0 && (
+                        <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #1a1a2a", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {albumCtx._citations.map(function(url, ci) {
+                            return <a key={ci} href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 8, color: "#444", textDecoration: "none" }}>[{ci + 1}]</a>;
+                          })}
+                        </div>
+                      )}
+                      {albumCtx._ungrounded && (
+                        <div title={albumCtx._ungrounded} style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #3a2a1a", fontSize: 9, color: "#c08040", lineHeight: 1.4 }}>
+                          ⚠ non verifie — repondu de memoire, sans recherche web. A recouper.
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -2893,6 +2900,8 @@ var S = {
   dot: { width: 7, height: 7, borderRadius: "50%", flexShrink: 0, marginRight: 10, display: "inline-block" },
   trackName: { fontSize: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   detail: { flex: 1, overflowY: "auto", padding: "14px 18px" },
+  // Colonne annexe: largeur fixe, elle ne doit jamais manger la zone de lecture.
+  annex: { width: 300, minWidth: 300, overflowY: "auto", borderLeft: "1px solid #141414", padding: "14px 0" },
   trackTitle: { fontSize: 15, fontWeight: 700, color: "#fff" },
   tag: { fontSize: 9, background: "#0d0d0d", border: "1px solid #1a1a1a", padding: "2px 8px", borderRadius: 20 },
   foldHeader: { display: "flex", alignItems: "center", gap: 7, cursor: "pointer", marginBottom: 8, userSelect: "none" },
