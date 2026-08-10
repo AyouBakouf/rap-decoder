@@ -186,6 +186,10 @@ async function callGemini(system, message, search, model, _retries) {
   if (!m || data.finishReason === "length") throw new Error("Reponse tronquee (chanson trop longue pour un seul appel).");
   var attachCitations = function(obj) {
     if (data.citations && data.citations.length) obj._citations = data.citations;
+    // Le backend a du remplacer le modele de recherche web par Gemini : la reponse
+    // vient de sa memoire, pas d'une recherche. A signaler, une tracklist inventee
+    // ressemble trait pour trait a une vraie.
+    if (data.substitution) obj._ungrounded = data.substitution.raison;
     return obj;
   };
   try {
@@ -1356,6 +1360,11 @@ export default function App() {
                           {albumCtx._citations.map(function(url, ci) {
                             return <a key={ci} href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 8, color: "#444", textDecoration: "none" }}>[{ci + 1}]</a>;
                           })}
+                        </div>
+                      )}
+                      {albumCtx._ungrounded && (
+                        <div title={albumCtx._ungrounded} style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #3a2a1a", fontSize: 9, color: "#c08040", lineHeight: 1.4 }}>
+                          ⚠ non verifie — repondu de memoire, sans recherche web. A recouper.
                         </div>
                       )}
                     </div>

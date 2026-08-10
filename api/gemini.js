@@ -81,9 +81,43 @@ export default async function handler(req, res) {
 
   var system = req.body.system || "";
   var message = req.body.message || "";
-  // Le front peut imposer un modele au format OpenRouter : le renormaliser pour Google.
   var model = req.body.model || defaultModel;
-  if (provider.name === "google") model = model.replace(/^google\//, "");
+
+  // Le front impose "perplexity/sonar" sur les appels qui demandent une recherche
+  // web (tracklists, discographies, contexte d'album). Google ne sert que ses
+  // propres modeles : tout identifiant garde un namespace apres retrait de
+  // "google/" lui est etranger et provoquait un 404.
+  //
+  // On substitue alors le modele Google, en signalant que la reponse est produite
+  // de memoire et non sourcee — l'appelant doit pouvoir le montrer a l'ecran.
+  //
+  // Si tu recredites OpenRouter, pose SEARCH_VIA_OPENROUTER=1 : ces appels
+  // repartiront chez lui et retrouveront une vraie recherche web, pendant que le
+  // decodage continue de passer par Google gratuitement. Sans ce drapeau, la
+  // substitution reste silencieuse meme avec du credit disponible.
+  var substitution = null;
+  if (provider.name === "google") {
+    model = model.replace(/^google\//, "");
+    if (model.indexOf("/") !== -1) {
+      var orKey = cleanEnv(process.env.OPENROUTER_API_KEY);
+      if (orKey && cleanEnv(process.env.SEARCH_VIA_OPENROUTER)) {
+        provider = {
+          name: "openrouter",
+          apiKey: orKey,
+          url: "https://openrouter.ai/api/v1/chat/completions",
+          model: model,
+          headers: { 'HTTP-Referer': 'https://rap-decoder.vercel.app', 'X-Title': 'Rap Decoder' },
+        };
+      } else {
+        substitution = {
+          demande: model,
+          utilise: provider.model,
+          raison: "recherche web indisponible (pas de credit OpenRouter, quota google_search nul sur le tier gratuit)",
+        };
+        model = provider.model;
+      }
+    }
+  }
 
   var messages = [];
   if (system) messages.push({ role: "system", content: system });
@@ -136,7 +170,7 @@ export default async function handler(req, res) {
     }
 
     var cleaned = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-    res.status(200).json({ text: cleaned, citations: data.citations || null, finishReason: finishReason });
+    res.status(200).json({ text: cleaned, citations: data.citations || null, finishReason: finishReason, substitution: substitution });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
