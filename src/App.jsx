@@ -330,7 +330,11 @@ async function callGemini(system, message, search, model, _retries) {
   var data = await res.json();
   // Rate limit: on attend le delai indique par Google et on reessaie tout seul
   if (data.rateLimited && _retries < 5) {
-    var wait = Math.min((data.retryAfter || 20) + 2, 45);
+    // Le plafond etait a 45s alors que le tier gratuit demande couramment ~48s:
+    // on attendait donc toujours un peu moins que necessaire, ce qui garantissait
+    // un nouveau 429 a chaque tentative jusqu'a epuisement. On suit le delai
+    // annonce par l'API, avec une marge, et un plafond assez haut pour le couvrir.
+    var wait = Math.min((data.retryAfter || 20) + 3, 120);
     await new Promise(function(r) { setTimeout(r, wait * 1000); });
     return callGemini(system, message, search, model, _retries + 1);
   }

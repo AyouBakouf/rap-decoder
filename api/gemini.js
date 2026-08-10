@@ -127,7 +127,22 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       if (response.status === 429) {
-        return res.status(429).json({ rateLimited: true, retryAfter: 20, error: 'Rate limit' });
+        // Google indique le delai exact a respecter ("Please retry in 47.6s.") et
+        // peut demander bien plus que les 20s qu'on supposait. Reessayer trop tot
+        // garantit un nouveau 429 et brule les tentatives pour rien.
+        var retryAfter = 20;
+        var mSec = raw.match(/retry in ([\d.]+)\s*s/i);
+        if (mSec) retryAfter = Math.ceil(parseFloat(mSec[1]));
+        // Le quota epuise est distinct d'un simple pic de debit : le signaler permet
+        // a l'appelant de ne pas s'acharner.
+        var quotaMatch = raw.match(/Quota exceeded for metric: ([^\s,]+)[^\n]*limit: (\d+)/i);
+        return res.status(429).json({
+          rateLimited: true,
+          retryAfter: retryAfter,
+          quotaMetric: quotaMatch ? quotaMatch[1] : null,
+          quotaLimit: quotaMatch ? Number(quotaMatch[2]) : null,
+          error: 'Rate limit (reessai dans ' + retryAfter + 's)',
+        });
       }
       var detail = "";
       try { var parsed = JSON.parse(raw); detail = parsed.error && parsed.error.message ? parsed.error.message : raw.slice(0, 500); } catch (e) { detail = raw.slice(0, 500); }
