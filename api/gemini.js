@@ -8,6 +8,46 @@
 export var GOOGLE_DEFAULT_MODEL = "gemini-3.6-flash";
 export var OPENROUTER_DEFAULT_MODEL = "google/gemini-2.5-flash";
 
+// Modele par TYPE de tache, cote OpenRouter uniquement (sur le tier gratuit Google,
+// tout passe par le modele Google, il n'y a rien a arbitrer).
+//
+//  - decode : gros volume, sortie longue (chaque ligne sort en original + traduction),
+//    donc c'est le prix de SORTIE qui domine la facture. V4 Pro est deja le second
+//    decodeur du projet (api/openrouter.js) et sort a 0.87$/M contre 2.50$ pour
+//    gemini-2.5-flash: sur ce poste c'est le meilleur rapport a qualite comparable.
+//  - analysis : volume plus faible mais demande du jugement (reperer un vrai multi,
+//    noter une ecriture). On peut y mettre plus cher sans que ca pese.
+// La RECHERCHE n'est volontairement pas listee ici: ces appels imposent
+// "perplexity/sonar" depuis le front, et c'est justement ce modele explicite qui
+// declenche la detection de substitution ("repondu de memoire, sans recherche web")
+// plus bas. Le resoudre ici a la place ferait disparaitre cet avertissement en
+// silence — ne pas "simplifier" en ajoutant une entree search.
+//
+// Chaque valeur est surchargeable par variable d'environnement: les identifiants
+// OpenRouter changent, et une valeur en dur qui ne correspond plus produit un 404.
+export var TASK_MODELS = {
+  decode: { env: "MODEL_DECODE", def: "deepseek/deepseek-v4-pro" },
+  analysis: { env: "MODEL_ANALYSIS", def: "deepseek/deepseek-v4-pro" },
+};
+
+// Tarifs OpenRouter en dollars par million de tokens, + plafond de sortie.
+// Sert a chiffrer reellement une session au lieu d'appliquer un tarif fige: le
+// compteur mentait des que le modele changeait. Un modele absent de cette table
+// n'est pas une erreur — son cout est simplement rendu inconnu plutot que faux.
+export var MODEL_PRICING = {
+  "deepseek/deepseek-v4-pro": { in: 0.43, out: 0.87, maxOut: 32000 },
+  "deepseek/deepseek-v4-flash": { in: 0.07, out: 0.14, maxOut: 32000 },
+  "google/gemini-2.5-flash": { in: 0.30, out: 2.50, maxOut: 60000 },
+  "google/gemini-3.6-flash": { in: 1.50, out: 7.50, maxOut: 60000 },
+  "perplexity/sonar": { in: 1.00, out: 1.00, maxOut: 8000 },
+};
+// Google nomme "gemini-3.6-flash", OpenRouter "google/gemini-3.6-flash": on accepte
+// les deux ecritures pour la meme entree de tarif.
+export function pricingFor(model) {
+  var m = model || "";
+  return MODEL_PRICING[m] || MODEL_PRICING["google/" + m] || null;
+}
+
 // Une variable definie mais vide, ou remplie d'espaces, est traitee comme absente :
 // une cle blanche doit faire basculer sur l'autre provider, pas produire un 401.
 function cleanEnv(v) {
@@ -72,7 +112,15 @@ export default async function handler(req, res) {
 
   var system = req.body.system || "";
   var message = req.body.message || "";
-  var model = req.body.model || defaultModel;
+  // Le modele explicite du front reste prioritaire (appels de recherche). Sinon on
+  // resout par type de tache, et seulement chez OpenRouter: le tier gratuit Google
+  // n'a qu'un modele, arbitrer par tache n'y voudrait rien dire.
+  var task = req.body.task || "decode";
+  var taskModel = null;
+  if (!req.body.model && provider.name === "openrouter" && TASK_MODELS[task]) {
+    taskModel = cleanEnv(process.env[TASK_MODELS[task].env]) || TASK_MODELS[task].def;
+  }
+  var model = req.body.model || taskModel || defaultModel;
 
   // Le front impose "perplexity/sonar" sur les appels qui demandent une recherche
   // web (tracklists, discographies, contexte d'album). Google ne sert que ses
@@ -114,10 +162,14 @@ export default async function handler(req, res) {
   if (system) messages.push({ role: "system", content: system });
   messages.push({ role: "user", content: message });
 
+  // 60000 etait taille pour Gemini. Un modele qui plafonne plus bas rejette la
+  // requete ou tronque, et la troncature ressort en "Reponse tronquee" cote client
+  // sans qu'on sache que c'est le plafond demande qui etait irrealiste.
+  var priced = pricingFor(model);
   var body = {
     model: model,
     messages: messages,
-    max_tokens: 60000,
+    max_tokens: (priced && priced.maxOut) || 32000,
   };
 
   try {
@@ -182,7 +234,14 @@ export default async function handler(req, res) {
       in: data.usage.prompt_tokens || 0,
       out: data.usage.completion_tokens || 0,
     } : null;
-    res.status(200).json({ text: cleaned, citations: data.citations || null, finishReason: finishReason, substitution: substitution, provider: provider.name, model: model, usage: usage });
+    // Le tarif part avec la reponse: c'est le seul endroit qui sait quel modele a
+    // reellement servi. Le client ne peut plus appliquer un prix qui n'est pas le bon.
+    res.status(200).json({
+      text: cleaned, citations: data.citations || null, finishReason: finishReason,
+      substitution: substitution, provider: provider.name, model: model,
+      task: task, pricing: priced ? { in: priced.in, out: priced.out } : null,
+      usage: usage,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

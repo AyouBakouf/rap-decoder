@@ -537,11 +537,15 @@ function setTurbo(v) { TURBO = !!v; }
 // Compteur de tokens cumules, pour chiffrer un album au lieu de l'estimer.
 // On separe les tokens factures de ceux passes par le tier gratuit: seuls les
 // premiers coutent quelque chose.
-var TOKENS = { in: 0, out: 0, calls: 0, paidIn: 0, paidOut: 0 };
+// paidUsd est cumule appel par appel, avec le tarif du modele qui a REELLEMENT servi
+// (renvoye par /api/gemini). Un tarif fige cote client devenait faux des qu'on changeait
+// de modele, et le compteur existe precisement pour ne pas estimer.
+// unpriced compte les appels dont le modele est absent du catalogue de tarifs: leur cout
+// est inconnu, pas nul — l'afficher comme nul serait le meme mensonge en plus discret.
+var TOKENS = { in: 0, out: 0, calls: 0, paidIn: 0, paidOut: 0, paidUsd: 0, unpriced: 0 };
 function tokensSnapshot() { return Object.assign({}, TOKENS); }
-function tokensReset() { TOKENS = { in: 0, out: 0, calls: 0, paidIn: 0, paidOut: 0 }; }
-// Tarif OpenRouter de google/gemini-2.5-flash, releve sur leur API.
-function paidCostUsd(t) { return (t.paidIn / 1e6) * 0.30 + (t.paidOut / 1e6) * 2.50; }
+function tokensReset() { TOKENS = { in: 0, out: 0, calls: 0, paidIn: 0, paidOut: 0, paidUsd: 0, unpriced: 0 }; }
+function paidCostUsd(t) { return t.paidUsd || 0; }
 
 // Barriere de quota partagee par TOUS les appels en vol. Sans elle, les 3 decodages
 // paralleles de decodeAll() se prenaient chacun leur 429 dans leur coin, attendaient
@@ -557,13 +561,18 @@ async function waitRateGate() {
     await new Promise(function(r) { setTimeout(r, Math.min(RATE_GATE - Date.now(), 2000)); });
   }
 }
-async function callGemini(system, message, search, model, _retries) {
+// task: "decode" (defaut) | "analysis" | "search". Sert au backend a choisir le modele
+// quand l'appel passe par OpenRouter — la traduction sort beaucoup de tokens et merite
+// le tarif de sortie le plus bas, l'analyse demande plus de jugement pour moins de volume.
+// Sans effet sur le tier gratuit Google, qui n'a qu'un modele.
+async function callGemini(system, message, search, model, _retries, task) {
   if (search === undefined) search = false;
   if (_retries === undefined) _retries = 0;
   await waitRateGate();
   var payload = { system: system, message: message, search: search };
   if (TURBO) payload.viaOpenRouter = true;
   if (model) payload.model = model;
+  if (task) payload.task = task;
   var res = await fetch("/api/gemini", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -582,7 +591,7 @@ async function callGemini(system, message, search, model, _retries) {
     // Repartir tous en meme temps a la seconde pres rejouerait la collision qu'on
     // vient d'attendre: on etale les reprises sur deux secondes.
     await new Promise(function(r) { setTimeout(r, Math.random() * 2000); });
-    return callGemini(system, message, search, model, _retries + 1);
+    return callGemini(system, message, search, model, _retries + 1, task);
   }
   if (data.error) throw new Error(data.error);
   if (data.usage) {
@@ -592,6 +601,12 @@ async function callGemini(system, message, search, model, _retries) {
     if (data.provider === "openrouter") {
       TOKENS.paidIn += data.usage.in || 0;
       TOKENS.paidOut += data.usage.out || 0;
+      if (data.pricing) {
+        TOKENS.paidUsd += ((data.usage.in || 0) / 1e6) * data.pricing.in
+                        + ((data.usage.out || 0) / 1e6) * data.pricing.out;
+      } else {
+        TOKENS.unpriced += 1;
+      }
     }
   }
   var text = data.text || "";
@@ -600,7 +615,7 @@ async function callGemini(system, message, search, model, _retries) {
   // sans ce garde-fou, le regex ci-dessus matche quand meme jusqu'au dernier "}" complet trouve
   // (souvent une ligne au milieu de la chanson) et affiche une traduction tronquee sans avertir.
   if (data.finishReason === "length" && _retries < 1) {
-    return callGemini(system, message, search, model, (_retries || 0) + 1);
+    return callGemini(system, message, search, model, (_retries || 0) + 1, task);
   }
   if (!m || data.finishReason === "length") throw new Error("Reponse tronquee (chanson trop longue pour un seul appel).");
   var attachCitations = function(obj) {
@@ -619,7 +634,7 @@ async function callGemini(system, message, search, model, _retries) {
       .replace(/,\s*]/g, "]")
       .replace(/[\x00-\x1f]/g, function(c) { return c === "\n" || c === "\r" || c === "\t" ? c : ""; });
     try { return attachCitations(JSON.parse(fixed)); } catch(e2) {}
-    if (_retries < 2) return callGemini(system, message, search, model, (_retries || 0) + 1);
+    if (_retries < 2) return callGemini(system, message, search, model, (_retries || 0) + 1, task);
     throw jsonErr;
   }
 }
@@ -1183,7 +1198,7 @@ export default function App() {
       }
       var prompt = "ARTISTE: " + artist + "\nMORCEAU: \"" + sel + "\"" + albumCtxStr + "\n\nLignes autour:\n" + contextLines.join("\n") + "\n\nLIGNE A ANALYSER: " + line.o + "\nTraduction: " + (line.t || line.o) + "\n\nCherche les callbacks vers d'autres morceaux/albums de " + artist + ". Compare les mots, images et themes avec sa discographie." + annotationsBlock;
       // Utilise search pour verifier les callbacks discographiques
-      var r = await callGemini(DEEP_ANALYSIS_SYSTEM, prompt, true);
+      var r = await callGemini(DEEP_ANALYSIS_SYSTEM, prompt, true, null, 0, "analysis");
       if (!matchedAnnotations.length) r = stripFakeGeniusCitation(r);
       if (r.couches && r.couches.length > 2) r.couches = r.couches.slice(0, 2);
       // Persiste l'analyse a cote des paroles (cache local + etat en memoire), au lieu de la
@@ -1284,7 +1299,7 @@ export default function App() {
         "\n\nCherche les callbacks vers d'autres morceaux/albums de " + artist + "." + annotationsBlock;
 
       try {
-        var res = await callGemini(DEEP_ANALYSIS_BATCH_SYSTEM, prompt, true);
+        var res = await callGemini(DEEP_ANALYSIS_BATCH_SYSTEM, prompt, true, null, 0, "analysis");
         var targetByIdx = {};
         targets.forEach(function(e) { targetByIdx[e.idx] = e; });
         var byIdx = {};
@@ -1400,7 +1415,7 @@ export default function App() {
       var decodedList = allCachedAlbums.map(function(a) { return a.artist + " - " + a.album; }).join(", ");
 
       // 2 appels en parallele
-      var searchPromise = callGemini(THEMATIC_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nPAROLES:\n" + allLyrics, false);
+      var searchPromise = callGemini(THEMATIC_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nPAROLES:\n" + allLyrics, false, null, 0, "analysis");
       var suggestPromise = callGemini(SUGGEST_SYSTEM, "THEME: \"" + thematicQuery + "\"\n\nALBUMS DEJA DECODES (ne pas suggerer de morceaux de ceux-la): " + decodedList, false, "perplexity/sonar");
 
       var results = await searchPromise.catch(function() { return { angles: [] }; });
@@ -1532,7 +1547,7 @@ export default function App() {
       }
       var allText = gathered.blocks.join("");
       if (allText.length <= MAX_VIDEO_CHARS) {
-        var r = await callGemini(VIDEO_SCAN_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nLIGNES DEJA ANALYSEES:\n" + allText, false);
+        var r = await callGemini(VIDEO_SCAN_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nLIGNES DEJA ANALYSEES:\n" + allText, false, null, 0, "analysis");
         setVideoResults(r);
         runVideoCurate(r.angles);
       } else {
@@ -1551,7 +1566,7 @@ export default function App() {
         if (curBatch.length > 0) batches.push(curBatch.join(""));
 
         var results = await Promise.all(batches.map(function(batchText) {
-          return callGemini(VIDEO_SCAN_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nLIGNES DEJA ANALYSEES:\n" + batchText, false)
+          return callGemini(VIDEO_SCAN_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nLIGNES DEJA ANALYSEES:\n" + batchText, false, null, 0, "analysis")
             .catch(function() { return { angles: [] }; });
         }));
         var merged = { angles: [] };
@@ -1603,7 +1618,7 @@ export default function App() {
         total += block.length;
       }
 
-      var r = await callGemini(VIDEO_CURATE_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nLIGNES (deja groupees par angle par un scan precedent):\n" + blocks.join("\n"), false);
+      var r = await callGemini(VIDEO_CURATE_SYSTEM, "BRIEF VIDEO:\n" + videoBrief + "\n\nLIGNES (deja groupees par angle par un scan precedent):\n" + blocks.join("\n"), false, null, 0, "analysis");
       setVideoCuration(r);
       // L'IA propose les essentielles precochees, l'utilisateur ajuste — pas de depart de zero.
       var ess = (r && r.essentielles) || [];
@@ -1690,7 +1705,7 @@ export default function App() {
           else if (l.o) allLyrics += l.o + "\n";
         });
       });
-      var r = await callGemini(BEST_BARS_SYSTEM, "Album: \"" + album + "\" par " + artist + "\n\nPAROLES COMPLETES:\n" + allLyrics, false);
+      var r = await callGemini(BEST_BARS_SYSTEM, "Album: \"" + album + "\" par " + artist + "\n\nPAROLES COMPLETES:\n" + allLyrics, false, null, 0, "analysis");
       var bars = (r.bars || []).sort(function(a, b) { return (b.impact || 0) - (a.impact || 0); });
       setBestBars(bars);
       if (bars.length) bbSet(artist, album, bars);
@@ -1737,7 +1752,7 @@ export default function App() {
         return l.o + (l.t ? "\n(" + l.t + ")" : "");
       }).join("\n");
       var albumCtxStr = mode === "single" ? "" : " (album: " + album + ")";
-      var r = await callGemini(ANALYSIS_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtxStr + "\n\nPAROLES (traductions entre parentheses):\n" + lyricsText, false);
+      var r = await callGemini(ANALYSIS_SYSTEM, "Morceau: \"" + name + "\" par " + artist + albumCtxStr + "\n\nPAROLES (traductions entre parentheses):\n" + lyricsText, false, null, 0, "analysis");
       var analysis = {
         score: r.score, score_breakdown: r.score_breakdown, score_note: r.score_note,
         essentiel: r.essentiel || [], notable: r.notable || [], multis: r.multis || [],
@@ -2280,6 +2295,11 @@ export default function App() {
                         {tokenStats.paidOut > 0
                           ? <span style={{ color: "#f0c040" }}> · facture ~{paidCostUsd(tokenStats).toFixed(3)} $</span>
                           : <span style={{ color: "#4ade80" }}> · gratuit</span>}
+                        {tokenStats.unpriced > 0 && (
+                          <span title="Modele absent de MODEL_PRICING dans api/gemini.js : son cout n'est pas connu, il n'est donc pas compte dans le total." style={{ color: "#c08040" }}>
+                            {" "}· {tokenStats.unpriced} appel{tokenStats.unpriced > 1 ? "s" : ""} au tarif inconnu
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
