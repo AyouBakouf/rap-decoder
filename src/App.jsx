@@ -549,6 +549,9 @@ function paidCostUsd(t) { return (t.paidIn / 1e6) * 0.30 + (t.paidOut / 1e6) * 2
 // trois attentes pleines pour une seule requete qui passe. Des qu'un appel apprend le
 // delai, il le publie ici et tout le monde patiente derriere la meme echeance.
 var RATE_GATE = 0;
+// Secondes restantes avant reprise, pour que l'attente de quota soit visible a
+// l'ecran au lieu de passer pour un bouton fige.
+function rateGateLeft() { return Math.max(0, Math.ceil((RATE_GATE - Date.now()) / 1000)); }
 async function waitRateGate() {
   while (RATE_GATE > Date.now()) {
     await new Promise(function(r) { setTimeout(r, Math.min(RATE_GATE - Date.now(), 2000)); });
@@ -649,7 +652,8 @@ export default function App() {
   var _l = useState(false), focusLoading = _l[0], setFocusLoading = _l[1];
   var _dsr = useState(false), deepScanRunning = _dsr[0], setDeepScanRunning = _dsr[1];
   var _dsp = useState({ done: 0, total: 0 }), deepScanProgress = _dsp[0], setDeepScanProgress = _dsp[1];
-  var _p = useState(false), plLoading = _p[0], setPlLoading = _p[1];
+  var _p = useState(null), plTrack = _p[0], setPlTrack = _p[1]; // morceau dont l'analyse tourne
+  var _pe = useState(null), plErr = _pe[0], setPlErr = _pe[1];
   // Panneau actif dans le detail (null = vue morceau normale via `sel`, sinon un des 4 panneaux speciaux).
   // Remplace 4 booleans independants qu'il fallait reset a la main a chaque site d'appel.
   var _panel = useState(null), activePanel = _panel[0], setActivePanel = _panel[1];
@@ -753,6 +757,15 @@ export default function App() {
       sessionSave({ mode: mode, artist: artist, album: album, single: single, tracks: tracks });
     }
   }, [view, tracks, artist, album, single, mode]);
+
+  // Le compte a rebours de quota est lu au rendu: sans ce battement il resterait fige
+  // sur la valeur qu'il avait au clic. Ne tourne que pendant une analyse.
+  var _tk = useState(0), setTick = _tk[1];
+  useEffect(function() {
+    if (!plTrack) return;
+    var id = setInterval(function() { setTick(function(t) { return t + 1; }); }, 1000);
+    return function() { clearInterval(id); };
+  }, [plTrack]);
 
   // localStorage plein: cacheSet le detecte et previent via un event DOM (voir plus haut) au lieu
   // d'avaler l'echec en silence — surtout utile pendant la disco en masse qui ecrit beaucoup.
@@ -1714,8 +1727,10 @@ export default function App() {
   // besoin pour dire lesquels ont echoue au lieu de les perdre en silence.
   var extractPunchlinesFor = async function(name) {
     var entry = dRef.current[name];
-    if (!entry || entry.st !== "ok" || !entry.d || !entry.d.lines) return false;
-    if (entry.d.analysis) return true; // deja fait
+    if (!entry || entry.st !== "ok" || !entry.d || !entry.d.lines) {
+      return { ok: false, msg: "pas de paroles exploitables pour ce morceau" };
+    }
+    if (entry.d.analysis) return { ok: true }; // deja fait
     try {
       var lyricsText = entry.d.lines.map(function(l) {
         if (l.s) return "\n" + l.s;
@@ -1733,15 +1748,21 @@ export default function App() {
       dRef.current = next;
       setData(Object.assign({}, dRef.current));
       cacheSet(artist, name, { d: merged });
-      return true;
-    } catch (e) { return false; }
+      return { ok: true };
+    } catch (e) { return { ok: false, msg: (e && e.message) ? e.message : String(e) }; }
   };
 
   // Extrait les meilleures punchlines du son courant
+  // L'etat de chargement etait global: analyser un morceau puis en ouvrir un autre
+  // affichait "analyse..." sur le second, qui n'avait rien de lance. On le rattache
+  // donc au morceau reellement en cours, et on montre l'echec au lieu de revenir
+  // silencieusement au bouton comme si le clic n'avait jamais eu lieu.
   var extractPunchlines = async function() {
-    setPlLoading(true);
-    await extractPunchlinesFor(sel);
-    setPlLoading(false);
+    var target = sel;
+    setPlTrack(target); setPlErr(null);
+    var res = await extractPunchlinesFor(target);
+    setPlTrack(null);
+    if (!res.ok) setPlErr({ track: target, msg: res.msg });
   };
 
   // Best of album: extrait les punchlines de tous les sons decodes (2 en parallele)
@@ -1763,8 +1784,8 @@ export default function App() {
     for (var i = 0; i < pending.length; i += 2) {
       var slice = pending.slice(i, i + 2);
       await Promise.all(slice.map(function(t) {
-        return extractPunchlinesFor(t).then(function(ok) {
-          if (!ok) fails.push(t);
+        return extractPunchlinesFor(t).then(function(res) {
+          if (!res.ok) fails.push(t);
           finished += 1;
           setAlbumPlProg({ done: finished, total: pending.length });
         });
@@ -2983,16 +3004,35 @@ export default function App() {
                     <div style={{ fontSize: 10, color: "#444", marginBottom: 14, fontStyle: "italic", letterSpacing: 1 }}>analyse du contexte en cours...</div>
                   )}
 
-                  {curD.lines && curD.lines.length > 0 && !curD.analysis && (
-                    <button onClick={extractPunchlines} disabled={plLoading} style={{
-                      background: "transparent", border: "1px solid #2a2a2a", borderRadius: 4,
-                      color: plLoading ? "#555" : "#a855f7", fontFamily: "inherit", fontSize: 10,
-                      padding: "6px 12px", cursor: plLoading ? "default" : "pointer",
-                      letterSpacing: 2, textTransform: "uppercase", marginBottom: 14,
-                    }}>
-                      {plLoading ? "analyse..." : "★ meilleures barres"}
-                    </button>
-                  )}
+                  {curD.lines && curD.lines.length > 0 && !curD.analysis && (function() {
+                    var running = plTrack === sel;
+                    var waiting = running ? rateGateLeft() : 0;
+                    return (
+                      <div style={{ marginBottom: 14 }}>
+                        <button onClick={extractPunchlines} disabled={!!plTrack} style={{
+                          background: "transparent", border: "1px solid #2a2a2a", borderRadius: 4,
+                          color: plTrack ? "#555" : "#a855f7", fontFamily: "inherit", fontSize: 10,
+                          padding: "6px 12px", cursor: plTrack ? "default" : "pointer",
+                          letterSpacing: 2, textTransform: "uppercase",
+                        }}>
+                          {running ? "analyse..." : (plTrack ? "analyse en cours ailleurs" : "★ meilleures barres")}
+                        </button>
+                        {running && (
+                          <div style={{ fontSize: 9, color: "#555", marginTop: 5, fontStyle: "italic" }}>
+                            {waiting > 0
+                              ? "quota gratuit sature — reprise dans " + waiting + "s"
+                              : "un seul appel, mais long sur un morceau entier"}
+                          </div>
+                        )}
+                        {plErr && plErr.track === sel && !running && (
+                          <div style={{ marginTop: 8, padding: "9px 11px", background: "#1a0e0e", border: "1px solid #3a1a1a", borderRadius: 5, fontSize: 10, color: "#e07070", lineHeight: 1.5 }}>
+                            ⚠ L'analyse a echoue : {plErr.msg}.{" "}
+                            <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={extractPunchlines}>Reessayer</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {curD.analysis && <AnalysisView a={curD.analysis} />}
 
