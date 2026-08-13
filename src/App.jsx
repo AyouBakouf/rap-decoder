@@ -356,6 +356,49 @@ function artistBestLines(artist) {
   return out.sort(function(x, y) { return (y.impact || 0) - (x.impact || 0); });
 }
 
+// Le cache d'un morceau ne porte que l'artiste et le titre (_a/_t), jamais l'album.
+// L'appartenance se reconstruit donc depuis les tracklists deja en cache — aucune
+// migration du cache existant, et ca suffit pour filtrer un classement par disque.
+function trackAlbumMap(artist) {
+  var map = {}, prefix = CV + ":tl:" + norm(artist) + ":";
+  storeKeys().forEach(function(k) {
+    if (k.indexOf(prefix) !== 0) return;
+    var tl = storeGet(k);
+    if (!tl || !tl.length) return;
+    // La cle ne garde que le titre normalise: on se sert du 1er morceau pour
+    // retrouver le libelle exact via le cache, et a defaut on affiche la cle.
+    var album = k.slice(prefix.length);
+    tl.forEach(function(t) { map[norm(t)] = album; });
+  });
+  return map;
+}
+
+// Marqueurs poses par TRANSLATE_SYSTEM ([Verse 1], [Refrain], [Intro]...). On ne se
+// fie pas au numero ecrit dans le marqueur, souvent absent ou incoherent d'un morceau
+// a l'autre: le numero affiche est la position reelle du couplet dans le morceau, ce
+// qui garantit qu'il n'y ait jamais deux "Couplet 1" dans le meme titre.
+function sectionKind(marker) {
+  var m = (marker || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  if (/verse|couplet/.test(m)) return "verse";
+  if (/pre.?chorus|pre.?refrain/.test(m)) return "prechorus";
+  if (/chorus|refrain|hook/.test(m)) return "chorus";
+  if (/bridge|pont/.test(m)) return "bridge";
+  if (/intro/.test(m)) return "intro";
+  if (/outro/.test(m)) return "outro";
+  if (/interlude|skit/.test(m)) return "interlude";
+  return "other";
+}
+var SECTION_LABELS = {
+  chorus: "Refrain", prechorus: "Pre-refrain", bridge: "Pont",
+  intro: "Intro", outro: "Outro", interlude: "Interlude",
+};
+function sectionLabel(marker, verseNo) {
+  var kind = sectionKind(marker);
+  if (kind === "verse") return "Couplet " + verseNo;
+  if (SECTION_LABELS[kind]) return SECTION_LABELS[kind];
+  return (marker || "").replace(/^[\[(]|[\])]$/g, "").trim() || "Section";
+}
+
 // Classement des couplets. Le decoupage est gratuit: TRANSLATE_SYSTEM insere deja
 // des marqueurs de section ({"s":"[Verse 1]"}) dans les lignes en cache. Le score
 // est deduit des lignes du couplet que l'analyse d'ecriture a retenues, donc sur la
@@ -366,11 +409,14 @@ function artistBestLines(artist) {
 // nombre de lignes retenues affiche a cote du score, pour que ce soit lisible.
 function artistBestVerses(artist) {
   var rows = scanCache(CV + ":song:" + norm(artist) + ":");
+  var albums = trackAlbumMap(artist);
   var out = [];
   rows.forEach(function(r) {
     var d = r.value && r.value.d;
     if (!d || !d.lines || !d.lines.length || !d.analysis) return;
     var track = r.value._t || r.tail;
+    var album = albums[norm(track)] || null;
+    var verseNo = 0;
 
     // Impact par ligne, indexe sur le texte original.
     var scored = {};
@@ -385,12 +431,23 @@ function artistBestVerses(artist) {
       if (!cur || cur.lines.length < 4) return;
       if (!cur.hits) return; // aucun repere de qualite: on ne classe pas au hasard
       out.push({
-        track: track, section: cur.section, lines: cur.lines,
+        track: track, album: album, section: cur.section, label: cur.label,
+        isVerse: cur.isVerse, lines: cur.lines,
         score: cur.total, hits: cur.hits, best: cur.best,
       });
     };
     d.lines.forEach(function(l) {
-      if (l.s) { flush(); cur = { section: l.s, lines: [], total: 0, hits: 0, best: 0 }; return; }
+      if (l.s) {
+        flush();
+        // Le compteur avance sur TOUS les couplets rencontres, y compris ceux que
+        // flush() ecarte ensuite (trop courts, non notes): sinon le 3e couplet d'un
+        // morceau s'afficherait "Couplet 2" des que le 1er n'est pas retenu.
+        var isVerse = sectionKind(l.s) === "verse";
+        if (isVerse) verseNo += 1;
+        cur = { section: l.s, label: sectionLabel(l.s, verseNo), isVerse: isVerse,
+                lines: [], total: 0, hits: 0, best: 0 };
+        return;
+      }
       if (!l.o || !cur) return;
       cur.lines.push(l);
       var imp = scored[norm(l.o)];
@@ -611,6 +668,7 @@ export default function App() {
   var _ba = useState(""), bestArtist = _ba[0], setBestArtist = _ba[1];
   var _bd = useState(null), bestData = _bd[0], setBestData = _bd[1];
   var _bt = useState("lignes"), bestTab = _bt[0], setBestTab = _bt[1];
+  var _va = useState(""), verseAlbum = _va[0], setVerseAlbum = _va[1]; // "" = toute la disco
   var _bc = useState(""), bestCopied = _bc[0], setBestCopied = _bc[1];
 
   // Tant que le cache IndexedDB n'est pas charge en memoire, toute lecture
@@ -1605,6 +1663,7 @@ export default function App() {
   var loadBestOfArtist = function(name) {
     var who = (name || bestArtist).trim();
     if (!who) return;
+    setVerseAlbum(""); // le filtre d'un artiste ne veut rien dire pour le suivant
     setBestData({
       artist: who,
       lines: artistBestLines(who),
@@ -1879,14 +1938,23 @@ export default function App() {
               </button>
 
               {bestData && (function() {
+                var allVerses = bestData.verses || [];
+                // Le classement des couplets couvre toute la disco en cache. Le filtre
+                // le restreint a un disque sans recalcul ni appel: c'est la meme liste,
+                // reduite aux morceaux de l'album choisi.
+                var verseAlbums = [];
+                allVerses.forEach(function(v) {
+                  if (v.album && verseAlbums.indexOf(v.album) === -1) verseAlbums.push(v.album);
+                });
+                var verses = verseAlbum ? allVerses.filter(function(v) { return v.album === verseAlbum; }) : allVerses;
                 var items = bestTab === "lignes" ? bestData.lines
                   : bestTab === "passages" ? bestData.bars
-                  : (bestData.verses || []);
+                  : verses;
                 var st = bestData.stats;
                 return (
                   <div style={{ marginTop: 20 }}>
                     <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                      {[["lignes", "lignes", bestData.lines.length], ["passages", "passages", bestData.bars.length], ["couplets", "couplets", (bestData.verses || []).length]].map(function(t) {
+                      {[["lignes", "lignes", bestData.lines.length], ["passages", "passages", bestData.bars.length], ["couplets", "couplets", verses.length]].map(function(t) {
                         var on = bestTab === t[0];
                         return (
                           <button key={t[0]} onClick={function() { setBestTab(t[0]); }} style={{
@@ -1902,6 +1970,25 @@ export default function App() {
                         );
                       })}
                     </div>
+
+                    {bestTab === "couplets" && verseAlbums.length > 1 && (
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 14 }}>
+                        {[""].concat(verseAlbums).map(function(al) {
+                          var on = verseAlbum === al;
+                          return (
+                            <button key={al || "_all"} onClick={function() { setVerseAlbum(al); }} style={{
+                              padding: "4px 9px",
+                              background: on ? "#1a1408" : "transparent",
+                              color: on ? "#f0c040" : "#555",
+                              border: "1px solid " + (on ? "#3a2a10" : "#1a1a1a"), borderRadius: 3,
+                              fontFamily: "inherit", fontSize: 9, cursor: "pointer",
+                            }}>
+                              {al ? al.charAt(0).toUpperCase() + al.slice(1) : "toute la disco"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {items.length === 0 && (
                       <div style={{ padding: "18px 0", textAlign: "center" }}>
@@ -1991,7 +2078,7 @@ export default function App() {
                         <div key={id} style={{ border: "1px solid #1a1a1a", borderRadius: 4, padding: 10, marginBottom: 8 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 }}>
                             <span style={{ fontSize: 8, color: "#555", letterSpacing: 1, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {v.track} · {v.section}
+                              {v.label} · {v.track}
                             </span>
                             <span style={{ fontSize: 8, color: "#f0c040", letterSpacing: 1, flexShrink: 0 }}>
                               {v.score} pts · {v.hits} ligne{v.hits > 1 ? "s" : ""} retenue{v.hits > 1 ? "s" : ""}
