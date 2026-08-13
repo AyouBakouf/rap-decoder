@@ -543,9 +543,21 @@ function tokensReset() { TOKENS = { in: 0, out: 0, calls: 0, paidIn: 0, paidOut:
 // Tarif OpenRouter de google/gemini-2.5-flash, releve sur leur API.
 function paidCostUsd(t) { return (t.paidIn / 1e6) * 0.30 + (t.paidOut / 1e6) * 2.50; }
 
+// Barriere de quota partagee par TOUS les appels en vol. Sans elle, les 3 decodages
+// paralleles de decodeAll() se prenaient chacun leur 429 dans leur coin, attendaient
+// chacun ~56s, puis repartaient exactement en meme temps pour se reprendre un 429:
+// trois attentes pleines pour une seule requete qui passe. Des qu'un appel apprend le
+// delai, il le publie ici et tout le monde patiente derriere la meme echeance.
+var RATE_GATE = 0;
+async function waitRateGate() {
+  while (RATE_GATE > Date.now()) {
+    await new Promise(function(r) { setTimeout(r, Math.min(RATE_GATE - Date.now(), 2000)); });
+  }
+}
 async function callGemini(system, message, search, model, _retries) {
   if (search === undefined) search = false;
   if (_retries === undefined) _retries = 0;
+  await waitRateGate();
   var payload = { system: system, message: message, search: search };
   if (TURBO) payload.viaOpenRouter = true;
   if (model) payload.model = model;
@@ -562,7 +574,11 @@ async function callGemini(system, message, search, model, _retries) {
     // un nouveau 429 a chaque tentative jusqu'a epuisement. On suit le delai
     // annonce par l'API, avec une marge, et un plafond assez haut pour le couvrir.
     var wait = Math.min((data.retryAfter || 20) + 3, 120);
-    await new Promise(function(r) { setTimeout(r, wait * 1000); });
+    RATE_GATE = Math.max(RATE_GATE, Date.now() + wait * 1000);
+    await waitRateGate();
+    // Repartir tous en meme temps a la seconde pres rejouerait la collision qu'on
+    // vient d'attendre: on etale les reprises sur deux secondes.
+    await new Promise(function(r) { setTimeout(r, Math.random() * 2000); });
     return callGemini(system, message, search, model, _retries + 1);
   }
   if (data.error) throw new Error(data.error);
@@ -846,7 +862,7 @@ export default function App() {
       }
       // Meme regle que dans decode(): pas de reconstruction LLM quand une source a
       // deja rendu les vraies paroles — on prefere signaler l'echec de traduction.
-      if (!decoded && !(genius.found && genius.lyrics)) {
+      if (!decoded && !(genius.found && genius.lyrics && !genius.partial)) {
         try {
           var r2 = await callGemini(LLM_FALLBACK_SYSTEM, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", false, "perplexity/sonar");
           if (r2.found && r2.lines && r2.lines.length > 3) { r = r2; r._source = "llm-recall"; decoded = true; }
@@ -980,7 +996,13 @@ export default function App() {
 
   var decode = useCallback(async function(name, autoMode, force) {
     if (dRef.current[name] && dRef.current[name].st === "ok" && !force) {
-      if (!autoMode) { setSel(name); prefetchNext(name); }
+      if (!autoMode) {
+        setSel(name); prefetchNext(name);
+        // Contexte saute pendant le decodage de masse: c'est ici qu'on le rattrape,
+        // sinon un morceau decode par "Tout" n'en aurait jamais.
+        var got = dRef.current[name].d;
+        if (got && got.found && !got.context) fetchContext(name);
+      }
       return;
     }
     var up = function(v) {
@@ -1041,7 +1063,10 @@ export default function App() {
             // ce morceau, meme si son cache est bien present et lisible directement par cle.
             if (mode === "single") tlSet(artist, name, [name]);
           }
-          fetchContext(name);
+          // Pendant "Tout", le contexte doublait le nombre d'appels (un par morceau) sur
+          // un quota deja sature, pour un panneau que l'utilisateur ne regarde pas encore.
+          // Il est desormais recupere quand il ouvre le morceau.
+          if (!autoMode) fetchContext(name);
           decoded = true;
         } catch(e2) { transErr = e2 && e2.message ? e2.message : String(e2); }
       }
@@ -1049,7 +1074,10 @@ export default function App() {
       // la traduction a la place du texte original. Il ne doit servir QUE si aucune
       // source n'a rendu de paroles — sinon on remplace du texte authentique par une
       // reconstruction plus courte, ce qui est toujours perdant.
-      if (!decoded && genius.found && genius.lyrics) {
+      // Exception: un fragment marque partial (deux lignes tronquees par lrclib) n'est
+      // pas "du texte authentique a preserver". Le protegeait, la regle transformait un
+      // stub de 34 caracteres en echec definitif en interdisant tout repli.
+      if (!decoded && genius.found && genius.lyrics && !genius.partial) {
         giveUp();
       } else if (!decoded) {
         try {

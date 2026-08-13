@@ -1,3 +1,8 @@
+// En dessous, ce n'est pas un morceau: un couplet de rap fait deja plusieurs centaines
+// de caracteres. Sert de seuil "continue a chercher", pas de seuil de rejet — un skit
+// court reellement bref est conserve, mais marque partial.
+var MIN_FULL_LYRICS = 400;
+
 export default async function handler(req, res) {
   var token = process.env.GENIUS_API_TOKEN;
   if (!token) return res.status(500).json({ error: 'GENIUS_API_TOKEN not set' });
@@ -37,58 +42,55 @@ async function runLookup(title, artist, token, res) {
       geniusUrl = buildGeniusUrl(artist, cleanTitle);
       dbg.steps.push("genius_url_guess: " + geniusUrl);
     }
-    var lyrics = await fetchFromLrclib(songArtist, songTitle);
-    dbg.steps.push("lrclib(canonical): " + (lyrics ? lyrics.length + " chars" : "empty"));
-    if (!lyrics && song) {
-      lyrics = await fetchFromLrclib(artist, title);
-      dbg.steps.push("lrclib(original): " + (lyrics ? lyrics.length + " chars" : "empty"));
-    }
-    if (!lyrics) {
-      lyrics = await fetchFromLyricsOvh(songArtist, songTitle);
-      dbg.steps.push("lyricsovh(canonical): " + (lyrics ? lyrics.length + " chars" : "empty"));
-    }
-    if (!lyrics) {
-      lyrics = await fetchFromLyricsOvh(artist, title);
-      dbg.steps.push("lyricsovh(original): " + (lyrics ? lyrics.length + " chars" : "empty"));
-    }
-    if (!lyrics) {
+    // Chaque source rendait la main des qu'elle renvoyait QUELQUE CHOSE, si court
+    // soit-il. lrclib a des entrees tronquees a une ou deux lignes: 34 caracteres
+    // suffisaient a arreter la chaine, a passer le seuil de 20 ci-dessous, et a etre
+    // servis comme des paroles completes. On continue donc tant qu'on n'a pas un texte
+    // de taille plausible, en gardant le plus fourni trouve en route.
+    var lyrics = "";
+    var keep = function(cand, step) {
+      dbg.steps.push(step + ": " + (cand ? cand.length + " chars" : "empty"));
+      if (cand && cand.length > lyrics.length) lyrics = cand;
+      return lyrics.length >= MIN_FULL_LYRICS;
+    };
+    var enough = keep(await fetchFromLrclib(songArtist, songTitle), "lrclib(canonical)");
+    if (!enough && song) enough = keep(await fetchFromLrclib(artist, title), "lrclib(original)");
+    if (!enough) enough = keep(await fetchFromLyricsOvh(songArtist, songTitle), "lyricsovh(canonical)");
+    if (!enough) enough = keep(await fetchFromLyricsOvh(artist, title), "lyricsovh(original)");
+    if (!enough) {
       var sr = await fetchFromGeniusHtml(geniusUrl);
-      lyrics = sr.lyrics;
-      dbg.steps.push("genius_scrape: " + (lyrics ? lyrics.length + " chars" : "empty") + " | http=" + sr.status + " | blocks=" + sr.blocks + " | htmlLen=" + sr.htmlLen);
+      enough = keep(sr.lyrics, "genius_scrape(http=" + sr.status + " blocks=" + sr.blocks + " htmlLen=" + sr.htmlLen + ")");
     }
-    if (!lyrics || lyrics.length < 20) {
+    // Les paroliers FR rattrapent souvent ce que lrclib tronque: on les interroge des
+    // que le texte en main est court, pas seulement quand il est absent.
+    var srcUrl = geniusUrl;
+    if (!enough) {
       var pn = await fetchFromParolesNet(songArtist, songTitle);
-      dbg.steps.push("paroles_net(canonical): " + (pn.lyrics ? pn.lyrics.length + " chars" : "empty") + " | url=" + pn.url);
-      if (!pn.lyrics && (songArtist !== artist || songTitle !== title)) {
-        pn = await fetchFromParolesNet(artist, title);
-        dbg.steps.push("paroles_net(original): " + (pn.lyrics ? pn.lyrics.length + " chars" : "empty") + " | url=" + pn.url);
-      }
-      if (!pn.lyrics) {
-        var pm = await fetchFromParolesMusique(songArtist, songTitle);
-        dbg.steps.push("paroles_musique(canonical): " + (pm.lyrics ? pm.lyrics.length + " chars" : "empty") + " | url=" + pm.url);
-        if (!pm.lyrics && (songArtist !== artist || songTitle !== title)) {
-          pm = await fetchFromParolesMusique(artist, title);
-          dbg.steps.push("paroles_musique(original): " + (pm.lyrics ? pm.lyrics.length + " chars" : "empty") + " | url=" + pm.url);
-        }
-        if (pm.lyrics) {
-          return res.status(200).json({ found: true, lyrics: cleanLyrics(pm.lyrics), source: pm.url, title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg });
-        }
-      }
-      if (pn.lyrics) {
-        return res.status(200).json({ found: true, lyrics: cleanLyrics(pn.lyrics), source: pn.url, title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg });
-      }
-      var sonar = await fetchFromSonar(songArtist, songTitle, dbg.steps);
-      dbg.steps.push("sonar: " + (sonar ? sonar.length + " chars" : "empty"));
-      if (!sonar && (songArtist !== artist || songTitle !== title)) {
-        sonar = await fetchFromSonar(artist, title, dbg.steps);
-        dbg.steps.push("sonar(original): " + (sonar ? sonar.length + " chars" : "empty"));
-      }
-      if (sonar) {
-        return res.status(200).json({ found: true, lyrics: cleanLyrics(sonar), source: "sonar-search", title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg });
-      }
-      return res.status(200).json({ found: false, lyrics: "", source: geniusUrl, _debug: dbg });
+      if (!pn.lyrics && (songArtist !== artist || songTitle !== title)) pn = await fetchFromParolesNet(artist, title);
+      if (keep(pn.lyrics, "paroles_net(url=" + pn.url + ")")) { enough = true; srcUrl = pn.url; }
+      else if (pn.lyrics && lyrics === pn.lyrics) srcUrl = pn.url;
     }
-    return res.status(200).json({ found: true, lyrics: cleanLyrics(lyrics), source: geniusUrl, title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg });
+    if (!enough) {
+      var pm = await fetchFromParolesMusique(songArtist, songTitle);
+      if (!pm.lyrics && (songArtist !== artist || songTitle !== title)) pm = await fetchFromParolesMusique(artist, title);
+      if (keep(pm.lyrics, "paroles_musique(url=" + pm.url + ")")) { enough = true; srcUrl = pm.url; }
+      else if (pm.lyrics && lyrics === pm.lyrics) srcUrl = pm.url;
+    }
+    if (!enough) {
+      var sonar = await fetchFromSonar(songArtist, songTitle, dbg.steps);
+      if (!sonar && (songArtist !== artist || songTitle !== title)) sonar = await fetchFromSonar(artist, title, dbg.steps);
+      if (keep(sonar, "sonar")) { enough = true; srcUrl = "sonar-search"; }
+      else if (sonar && lyrics === sonar) srcUrl = "sonar-search";
+    }
+    if (!lyrics) return res.status(200).json({ found: false, lyrics: "", source: geniusUrl, _debug: dbg });
+    // Toujours trop court apres toutes les sources: c'est peut-etre un skit ou un
+    // interlude reellement bref, donc on ne le jette pas — mais on le signale, pour
+    // que le client sache qu'il n'a pas un morceau complet entre les mains.
+    return res.status(200).json({
+      found: true, lyrics: cleanLyrics(lyrics), source: srcUrl,
+      partial: !enough, chars: lyrics.length,
+      title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg,
+    });
   } catch (e) { return res.status(500).json({ error: e.message, _debug: dbg }); }
 }
 function cleanLyrics(text) {
