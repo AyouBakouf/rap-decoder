@@ -24,6 +24,61 @@ function isGenericFillerInfluence(s, artistName) {
   var hasOtherName = names.some(function(n) { return artistLower.indexOf(n.toLowerCase()) === -1; });
   return !hasOtherName;
 }
+// Le modele transplante volontiers un fait VRAI de la vie de l'artiste sur le mauvais
+// album — typiquement quand un autre disque du meme artiste est construit autour de cet
+// evenement, ou en porte le nom (l'hospitalisation de Despo Rutti appartient a "Dr Sophie
+// Said", pas a "Les Sirenes du charbon"). Rien ne sonne faux: le fait est exact, seule
+// l'attribution est fausse, donc aucune regle anti-invention ne l'attrape. On fait donc
+// declarer au modele a quel album la source rattache l'evenement, et on compare nous-memes.
+function normAlbumTitle(s) {
+  return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\b(le|la|les|l|the|a|an|un|une|de|du|des|d)\b/g, " ")
+    .replace(/\s+/g, " ").trim();
+}
+// Deuxieme filet, celui qui ne demande RIEN au modele. Quand il decrit le mauvais album,
+// son texte se contredit tout seul: il affirme que le disque porte le nom de quelqu'un
+// ("en donnant son nom a l'album") alors que le titre demande ne contient pas ce nom.
+// C'est la signature exacte du cas "un autre album de l'artiste porte le nom de
+// l'evenement", et elle est verifiable sans faire confiance a une declaration.
+var NAMESAKE_CLAIMS = [
+  "son nom a l album", "son nom au disque", "son nom a ce disque",
+  "porte son nom", "porte le nom", "donne son titre", "donne son nom",
+  "eponyme", "titre de l album vient", "nom de l album vient",
+];
+function flattenFr(s) {
+  return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ");
+}
+function claimsForeignNamesake(text, albumTitle, artistName) {
+  if (!text) return null;
+  // On ne cherche le nom revendique QUE dans la phrase qui porte la revendication:
+  // pris sur tout le texte, le premier nom propre est presque toujours l'artiste
+  // lui-meme, et l'avertissement affiche designerait alors le mauvais coupable.
+  var sentences = text.split(/(?<=[.!?])\s+/);
+  var t = normAlbumTitle(albumTitle), art = normAlbumTitle(artistName);
+  for (var s = 0; s < sentences.length; s++) {
+    var flat = flattenFr(sentences[s]);
+    if (!NAMESAKE_CLAIMS.some(function(p) { return flat.indexOf(p) !== -1; })) continue;
+    var names = sentences[s].match(/\b[A-ZÀ-Ý][\wà-ÿ'’-]+(?:\s+[A-ZÀ-Ý][\wà-ÿ'’-]+)*/g) || [];
+    var foreign = null;
+    for (var i = 0; i < names.length; i++) {
+      var n = normAlbumTitle(names[i]);
+      if (!n || n.length < 4) continue;
+      if (t.indexOf(n) !== -1) return null; // le titre porte bien ce nom: revendication coherente
+      if (art && (n === art || art.indexOf(n) !== -1)) continue; // l'artiste n'est pas le nom revendique
+      if (!foreign) foreign = names[i];
+    }
+    if (foreign) return foreign; // nom revendique absent du titre = contexte d'un autre disque
+  }
+  return null;
+}
+// null = attribution non verifiable (le modele n'a rien declare), on laisse passer.
+// true/false = elle a ete declaree, et elle correspond ou non a l'album demande.
+function backstoryMatchesAlbum(declared, requested) {
+  var d = normAlbumTitle(realVal(declared)), r = normAlbumTitle(requested);
+  if (!d || !r) return null;
+  return d === r || d.indexOf(r) !== -1 || r.indexOf(d) !== -1;
+}
 function isFrenchLang(lang) {
   var n = (lang || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
   return n === "francais" || n === "french" || n === "fr";
@@ -39,6 +94,57 @@ function sanitizeTranslation(r) {
   }
   return r;
 }
+// Nombre de lignes reellement portees par la source, hors marqueurs de section.
+function countSourceLines(lyrics) {
+  return (lyrics || "").split("\n")
+    .map(function(l) { return l.trim(); })
+    .filter(function(l) { return l && !/^[\[(].*[\])]$/.test(l); })
+    .length;
+}
+function countTranslatedLines(r) {
+  if (!r || !r.lines) return 0;
+  return r.lines.filter(function(l) { return l && l.o; }).length;
+}
+
+// Le modele omet parfois une partie des lignes sans que rien ne le signale: le JSON
+// est valide, finishReason vaut "stop", et on affiche la moitie d'un morceau comme
+// s'il etait complet. Vu sur un titre de 62 lignes rendu en une trentaine.
+// On compare donc ce qui sort a ce qui est entre, on retente une fois en insistant,
+// et si l'ecart persiste on le marque au lieu de le taire.
+var TRANSLATION_COMPLETENESS_MIN = 0.85;
+async function translateWithCheck(prompt, sourceLyrics) {
+  var expected = countSourceLines(sourceLyrics);
+  var r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
+  if (!expected) return r;
+
+  var got = countTranslatedLines(r);
+  if (got >= expected * TRANSLATION_COMPLETENESS_MIN) return r;
+
+  var insist = prompt + "\n\nATTENTION: le texte fourni contient " + expected +
+    " lignes de paroles. Ta reponse DOIT en contenir autant. N'en resume aucune, n'en fusionne aucune, n'en saute aucune.";
+  try {
+    var r2 = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, insist, false));
+    if (countTranslatedLines(r2) > got) { r = r2; got = countTranslatedLines(r2); }
+  } catch (e) {}
+
+  if (got < expected * TRANSLATION_COMPLETENESS_MIN) {
+    r._incomplete = { got: got, expected: expected };
+  }
+  return r;
+}
+
+// Repli d'affichage quand la source a bien rendu les paroles mais que la traduction
+// echoue (429 en tete). Sans ca on jetait un texte deja recupere pour afficher
+// "pas de paroles", ce qui envoyait le diagnostic sur la mauvaise piste.
+function rawLyricsToLines(lyrics) {
+  return (lyrics || "").split("\n")
+    .map(function(l) { return l.trim(); })
+    .filter(Boolean)
+    .map(function(l) {
+      return /^[\[(].*[\])]$/.test(l) ? { s: l } : { o: l, t: "", c: 100 };
+    });
+}
+
 function normWords(s) { return (s || "").toLowerCase().replace(/[^a-z0-9à-ÿ'\s]/gi, " ").split(/\s+/).filter(Boolean); }
 // Un fragment annote Genius "correspond" a une ligne si au moins la moitie des mots du plus court
 // se retrouvent dans l'autre — evite de coller une annotation sans rapport a la ligne analysee.
@@ -341,7 +447,7 @@ var DEEP_ANALYSIS_BATCH_SYSTEM = "Tu es un analyste de rap precis et rigoureux. 
 
 var CONTEXT_SYSTEM = "Tu connais bien le rap. On te donne un morceau (artiste + titre, parfois l'album). Donne du VRAI contexte et une VRAIE lecture de ce morceau specifique, en parlant SIMPLE comme a un pote qui connait le sujet a fond. Pas un resume Wikipedia — une vraie analyse.\n\nJSON UNIQUEMENT:\n{\"album\":\"nom ou null\",\"year\":null,\"producer\":\"prod ou null\",\"themes\":[\"theme1\",\"theme2\"],\"role\":\"le role de CE morceau dans l'album/la discographie, ou null\",\"summary\":\"3-5 phrases: de quoi parle vraiment ce morceau, en profondeur\",\"standout\":\"1-2 phrases: ce qui est particulier ou notable dans ce morceau precis, ou null\",\"philo\":{\"ref\":\"Oeuvre, reference precise (chapitre/section/§)\",\"explication\":\"le concept, tes propres mots\"} ou null,\"sonic_dna\":{\"mood\":\"ambiance en 2-3 mots concrets, ou null\",\"energy\":\"niveau d'energie/intensite en 2-3 mots, ou null\",\"prod\":\"style de production reel de CE morceau (instrumentation, texture rythmique), ou null\",\"texture\":\"elements sonores concrets qu'on entend (samples, basse, effets vocaux...), ou null\",\"similar\":[\"Artiste - Morceau\"]}}\n\n- themes: 2-3 mots CONCRETS (\"argent facile\", \"deuil\", \"famille\"). JAMAIS abstraits (\"introspection\", \"alienation\").\n- \"role\": la fonction de CE morceau specifiquement — intro/mise en contexte, single/tube, tournant emotionnel de l'album, morceau le plus dur/vulnerable, outro/conclusion, feature marquant, sample notable, etc. Precise et concret, pas vague. Si tu sais pas: la valeur JSON null (pas le mot \"null\" entre guillemets).\n- \"summary\": va au-dela du sujet general, et surtout NE SOFTEN PAS le sujet reel du morceau. Si le morceau parle de coups, de maltraitance, de violence familiale, de deuil, de prison: DIS-LE frontalement, ne le reformule pas en histoire de perseverance/resilience feel-good. Explique CE QUE l'artiste dit vraiment, le ton, l'angle qu'il prend — pas une lecture edulcoree qui evite le sujet dur pour una morale positive. Exemple MAUVAIS (edulcore): 'un hymne a la perseverance et la force de se relever'. Exemple BON (specifique): 'il raconte les coups et les chatiments corporels recus de ses parents pendant l'enfance, et retourne cette violence en question: pourquoi le parent a le droit de frapper sans expliquer'. Langage courant, comme a un pote, pas de critique musicale pretentieuse.\n- \"standout\": qu'est-ce qui distingue CE morceau des autres du meme artiste/album — une prise de risque, un sujet rarement aborde dans le rap, un choix de production, une collab notable, un moment de vulnerabilite rare. Si rien de special: la valeur JSON null, n'invente pas un truc pour remplir le champ.\n- \"philo\": UNIQUEMENT si un vrai parallele existe, JAMAIS force. Penseurs a mobiliser quand pertinent: les stoiciens Marc Aurele et Epictete (accepter ce qui ne depend pas de nous, la vertu face a l'adversite, l'amor fati), Nietzsche (morale du maitre vs morale de l'esclave, le ressentiment, 'ce qui ne tue pas rend plus fort', la volonte de puissance, le depassement de soi, la critique de la morale conventionnelle), Platon (apparence vs realite, la justice, les trois parties de l'ame — raison/coeur/desir), Aristote (l'eudaimonia comme but de la vie, la vertu comme juste milieu entre deux exces, la catharsis — l'art qui purge une emotion en la rejouant), Sartre (la liberte radicale, la responsabilite totale, la mauvaise foi, 'on choisit qui on devient'), Morgan Housel sur la psychologie de l'argent (le rapport a l'argent est une cicatrice psychologique, pas un calcul rationnel; la difference entre richesse visible/flex et richesse reelle). CES PENSEURS SONT LA COLLECTION PHYSIQUE DE L'UTILISATEUR — a prioriser a pertinence egale (il les a sous la main). Ca reste \"seulement si pertinent\": ne force JAMAIS l'un d'eux si un autre parallele colle clairement mieux, mais entre deux paralleles aussi pertinents l'un que l'autre, choisis celui de cette liste.\n\"ref\": la reference la PLUS PRECISE possible pour que l'utilisateur retrouve le passage LUI-MEME — oeuvre + chapitre/section/§ (ex: \"Genealogie de la morale, Premiere dissertation, §10\"). Prefere le §/chapitre/section (stable d'une edition a l'autre) a un numero de page (qui varie selon l'edition). EXACTE uniquement: ne mets un numero de section/§ precis QUE si tu es reellement sur qu'il est correct — si tu connais l'oeuvre mais pas le numero exact, cite juste l'oeuvre ou le chapitre general sans inventer de numero. Une reference precise mais fausse est pire qu'une reference vague.\n\"explication\": pas le concept en general — decris en 1 phrase ce que CE PASSAGE PRECIS dit ou argumente, pour que l'utilisateur sache a quoi s'attendre en l'ouvrant. Reste sur l'IDEE/L'ARGUMENT, jamais sur la formulation: N'ECRIS JAMAIS une phrase qui reprend ou imite la structure du texte original, meme courte, meme approximative — decrire precisement le contenu n'autorise pas a s'en rapprocher (la reference sert a ca, pas l'explication).\n1-2 phrases, direct et concret, comme un pote qui a lu de la philo mais qui parle pas comme un prof.\nExemple BON: {\"ref\":\"Par-dela bien et mal, §260\",\"explication\":\"Nietzsche y oppose deux facons d'evaluer ce qui est bien: celle du fort qui part de lui-meme, et celle du faible qui part de son ressentiment envers le fort.\"}\nExemple MAUVAIS (colle trop pres du texte original): 'On observe ici une reminiscence de la dialectique nietzscheenne du maitre et de l'esclave...'\nSi aucun parallele reel n'existe ou si tu dois forcer le lien: la valeur JSON null. Un parallele plaque qui sonne intello pour rien est pire que pas de parallele.\n- \"sonic_dna\": la signature sonore de CE morceau precis. \"mood\": l'ambiance emotionnelle en 2-3 mots concrets (pas \"sombre\" tout seul — precise, ex: \"paranoia feutree\", \"euphorie tendue\"). \"energy\": le niveau d'energie/intensite en 2-3 mots (ex: \"lourd et lent\", \"nerveux, uptempo\"). \"prod\": a QUOI ressemble la production reellement (instrumentation, texture rythmique) — pas le nom du producteur, deja dans le champ 'producer'. \"texture\": les elements sonores concrets qu'on entend (type de basse, samples, effets vocaux, field recordings...). \"similar\": 2-4 morceaux d'AUTRES artistes qui sonnent vraiment pareil (meme famille de prod, meme ambiance), format \"Artiste - Morceau\" — uniquement des comparaisons precises et reelles, pas des artistes au hasard du meme genre general. Pour chaque sous-champ ou tu ne peux pas etre precis: la valeur JSON null (pour 'similar': tableau vide). Ne remplis JAMAIS un sous-champ avec une generalite pour eviter le null.\n- CRUCIAL sur year: ne mets une annee QUE si une recherche web confirme explicitement la date de sortie. Si t'hesites entre plusieurs annees ou que tu approximes: la valeur JSON null. Ne choisis jamais 'la plus probable'.\n- REGLE DE FORMAT: quand un champ est incertain, mets la vraie valeur JSON null (sans guillemets), JAMAIS la chaine de caracteres \"null\" entre guillemets — ce sont deux choses differentes et la deuxieme s'affiche comme du texte casse dans l'app.\n- CRUCIAL: ne devine JAMAIS l'album/annee/prod. Si pas SUR a 100%, cherche sur le web, sinon mets null. Une info fausse est pire que pas d'info. Meme discipline pour 'role' et 'standout': mieux vaut null qu'une affirmation en l'air.";
 
-var ALBUM_CONTEXT_SYSTEM = "Tu es un expert rap. On te donne un ALBUM et un ARTISTE. Donne le contexte de cet album.\n\nJSON UNIQUEMENT:\n{\"year\":null,\"label\":\"nom du label ou null\",\"producers\":[\"prod1\",\"prod2\"],\"themes\":[\"theme1\",\"theme2\",\"theme3\"],\"era\":\"description courte de l'epoque/mouvement\",\"backstory\":\"l'evenement personnel reel qui a mene a cet album, ou null\",\"importance\":\"1-2 phrases: pourquoi cet album compte dans la discographie ou le genre\",\"summary\":\"3-4 phrases: de quoi parle l'album, le fil rouge, l'ambiance\",\"influences\":\"sample vocal, voix non-musicale, penseur/auteur cite qui structure l'album, ou null\"}\n\n=== REGLE LA PLUS IMPORTANTE, s'applique a CHAQUE champ factuel (year, label, producers, backstory) ===\nPour un champ factuel precis, tu as DEUX options: (1) tu as trouve l'info via une recherche web et tu es sur a 100%, tu la donnes telle quelle. (2) tu n'es pas sur, tu mets null (ou [] pour producers). IL N'Y A PAS DE TROISIEME OPTION. Ne remplis JAMAIS un champ avec une valeur plausible, approximative ou 'probablement correcte' — une annee approximative, un nom de label invente, une date arrondie sont TOUTES des ERREURS, pas des approximations acceptables. 3 champs a null valent mieux qu'1 champ faux.\n\"year\" EN PARTICULIER: c'est le champ le plus souvent devine au pif. Ne mets une annee QUE si ta recherche web a trouve une source qui la confirme explicitement (date de sortie, article, page de l'album). Si tu n'as trouve qu'une annee approximative ou que tu hesites entre plusieurs annees possibles, mets null — ne choisis PAS la plus probable, ne fais PAS de moyenne, n'utilise PAS l'annee de debut de carriere de l'artiste comme approximation.\n\nREGLES SPECIFIQUES:\n- themes: 3-5 mots CONCRETS. 'deuil du pere', 'sortir du quartier', 'flexer sur les haters'. JAMAIS 'introspection', 'alienation'.\n- era: situe dans le temps/mouvement. Ex: 'boom du drill FR 2022', 'golden era US East Coast', 'post-JMJD Despo Rutti'.\n- label: le VRAI nom du label/maison de disque QUE SI tu es sur a 100% (confirme par une source fiable). N'INVENTE JAMAIS un nom de label, projet ou collectif qui ressemble a un label. Si le moindre doute: null. Un label errone est pire qu'un champ vide.\n- \"backstory\" (IMPORTANT, ne pas oublier): l'evenement de vie REEL et PUBLIC qui explique pourquoi l'artiste a fait cet album — hospitalisation, deuil, rupture, incarceration, maladie, episode violent, separation d'un groupe, etc.\nCette info n'est a inclure QUE si l'artiste ou la presse en a deja parle PUBLIQUEMENT (interview, article) — dans ce cas c'est un fait deja assume publiquement par l'artiste lui-meme, tu n'as AUCUNE raison de l'edulcorer ou de rester vague par exces de precaution.\nMOTS/FORMULES INTERDITS (ils cachent le fait au lieu de le dire): 'des difficultes', 'des problemes', 'des deboires', 'une epreuve', 'une periode compliquee/difficile', 'des soucis', 'des blessures', 'ce qui l'a abime'.\nSi la source utilise un terme precis, REPRENDS-LE tel quel: hospitalisation psychiatrique, crise de paranoia/delire, tentative de suicide, overdose, garde a vue, incarceration, agression, etc.\nExemple MAUVAIS (trop vague): 'une peine sentimentale et des problemes psychiatriques l'ont plonge dans une depression'.\nExemple BON (precis et factuel): 'il a ete hospitalise en psychiatrie a plusieurs reprises suite a des crises de paranoia et de delire mystique, ce qu'il detaille lui-meme dans plusieurs interviews'.\n2-3 phrases factuelles, sans sensationalisme ni jugement moral — tu rapportes un fait deja public, pas un scandale. Cite la source si possible ('selon ses declarations a X', 'd'apres Y media').\nSi rien de tel n'est documente publiquement: null. Ne SPECULE JAMAIS au-dela de ce qui est confirme publiquement — la precision s'applique UNIQUEMENT a des faits deja sourcés, jamais a une hypothese.\n- importance: pourquoi ca compte. Parle NORMAL, pas comme un critique. Ex: 'Premier album solo apres la separation du groupe, il pose son identite.'\n- summary: raconte l'album comme a un pote. De quoi ca parle en vrai.\n- \"influences\": OBLIGATOIREMENT un NOM PROPRE precis (une personne reelle: auteur, penseur, predicateur, realisateur, autre artiste) dont la voix, les mots ou l'oeuvre apparaissent VRAIMENT sur le disque ou l'ont influence de facon documentee. Cherche activement sur le web \"qui est samplee/citee sur cet album\" — ne devine pas a partir du theme general.\nINTERDIT: reformuler le theme de l'album (\"la therapie\", \"l'examen de soi\", \"l'introspection\") comme si c'etait une 'influence' — ce n'est PAS ce qui est demande, c'est deja couvert par summary/backstory. Une influence = un NOM que tu peux citer, pas une description d'ambiance.\nSi tu ne peux pas nommer une personne precise et confirmee: la valeur JSON null. Ne remplis PAS ce champ avec une phrase generique juste pour eviter null.\nEcris QUI c'est et le THEME general de son propos (identite, ego, deuil, spiritualite, etc.) — mais ne cite JAMAIS le contenu exact de ce qu'il dit, ni une phrase de ses livres/discours.\nExemple BON: 'La voix d'Eckhart Tolle revient plusieurs fois sur le disque, notamment sur un interlude, ou il parle d'identite et de victimisation.'\nExemple FAUX (pas un nom, rejete): 'Les seances de therapie structurent l'album et Kendrick parle de son travail d'ecriture.' — ca c'est le theme general, pas une influence nommee.\n- producers: les principaux. Si pas sur, mets [].\n- CRUCIAL: ne devine RIEN. Si pas sur a 100%, utilise la recherche web. Mieux vaut null que faux.\n- TOUT en francais.";
+var ALBUM_CONTEXT_SYSTEM = "Tu es un expert rap. On te donne un ALBUM et un ARTISTE. Donne le contexte de cet album.\n\nJSON UNIQUEMENT:\n{\"year\":null,\"label\":\"nom du label ou null\",\"producers\":[\"prod1\",\"prod2\"],\"themes\":[\"theme1\",\"theme2\",\"theme3\"],\"era\":\"description courte de l'epoque/mouvement\",\"backstory\":\"l'evenement personnel reel qui a mene a cet album, ou null\",\"importance\":\"1-2 phrases: pourquoi cet album compte dans la discographie ou le genre\",\"summary\":\"3-4 phrases: de quoi parle l'album, le fil rouge, l'ambiance\",\"influences\":\"sample vocal, voix non-musicale, penseur/auteur cite qui structure l'album, ou null\",\"backstory_album\":\"le titre EXACT de l'album auquel la source rattache l'evenement de backstory, ou null si backstory est null\"}\n\n=== REGLE D'ATTRIBUTION — LA PLUS VIOLEE, LIS-LA EN PREMIER ===\nUn fait peut etre parfaitement VRAI pour l'artiste et totalement FAUX pour CET album. C'est l'erreur la plus frequente et la plus difficile a reperer, parce que rien ne sonne invente: tu prends un evenement reel et documente de la vie de l'artiste (une hospitalisation, un deuil, une incarceration) et tu le rattaches au mauvais disque de sa discographie.\nTOUT ce que tu ecris doit concerner L'ALBUM DEMANDE, precisement lui, pas un autre projet du meme artiste, pas sa carriere en general.\nDANGER MAXIMUM quand l'artiste a un AUTRE album construit autour de cet evenement, ou dont le TITRE renvoie a cet evenement (le nom d'un medecin, d'un lieu, d'une periode): l'evenement appartient alors a CET autre album, pas a celui qu'on te demande. Ne transfere JAMAIS le contexte d'un album vers un autre parce que les deux sont du meme artiste ou de la meme periode.\nTEST OBLIGATOIRE avant d'ecrire \"backstory\": est-ce que je peux citer une source qui nomme EXPLICITEMENT l'album demande a cote de cet evenement ? Si la source relie l'evenement a l'artiste mais SANS nommer cet album precis, ou en nommant un AUTRE album: backstory=null. Un contexte perso pris sur le mauvais album est une ERREUR GRAVE, pas une approximation utile.\n\"backstory_album\": recopie le titre de l'album tel que la source le rattache a l'evenement. Si c'est bien l'album demande, remets son titre. Si c'est un autre album, mets le titre de CET autre album (et alors backstory doit etre null). Ne recopie pas mecaniquement l'album demande pour faire passer le controle.\nMEME REGLE pour \"influences\", \"themes\", \"summary\" et \"importance\": decris CE disque. Si tu ne connais pas assez cet album precis pour en parler sans le confondre avec un autre, mets null plutot qu'un contexte emprunte au voisin.\n\n=== REGLE LA PLUS IMPORTANTE, s'applique a CHAQUE champ factuel (year, label, producers, backstory) ===\nPour un champ factuel precis, tu as DEUX options: (1) tu as trouve l'info via une recherche web et tu es sur a 100%, tu la donnes telle quelle. (2) tu n'es pas sur, tu mets null (ou [] pour producers). IL N'Y A PAS DE TROISIEME OPTION. Ne remplis JAMAIS un champ avec une valeur plausible, approximative ou 'probablement correcte' — une annee approximative, un nom de label invente, une date arrondie sont TOUTES des ERREURS, pas des approximations acceptables. 3 champs a null valent mieux qu'1 champ faux.\n\"year\" EN PARTICULIER: c'est le champ le plus souvent devine au pif. Ne mets une annee QUE si ta recherche web a trouve une source qui la confirme explicitement (date de sortie, article, page de l'album). Si tu n'as trouve qu'une annee approximative ou que tu hesites entre plusieurs annees possibles, mets null — ne choisis PAS la plus probable, ne fais PAS de moyenne, n'utilise PAS l'annee de debut de carriere de l'artiste comme approximation.\n\nREGLES SPECIFIQUES:\n- themes: 3-5 mots CONCRETS. 'deuil du pere', 'sortir du quartier', 'flexer sur les haters'. JAMAIS 'introspection', 'alienation'.\n- era: situe dans le temps/mouvement. Ex: 'boom du drill FR 2022', 'golden era US East Coast', 'post-JMJD Despo Rutti'.\n- label: le VRAI nom du label/maison de disque QUE SI tu es sur a 100% (confirme par une source fiable). N'INVENTE JAMAIS un nom de label, projet ou collectif qui ressemble a un label. Si le moindre doute: null. Un label errone est pire qu'un champ vide.\n- \"backstory\" (IMPORTANT, ne pas oublier): l'evenement de vie REEL et PUBLIC qui explique pourquoi l'artiste a fait cet album — hospitalisation, deuil, rupture, incarceration, maladie, episode violent, separation d'un groupe, etc.\nCette info n'est a inclure QUE si l'artiste ou la presse en a deja parle PUBLIQUEMENT (interview, article) — dans ce cas c'est un fait deja assume publiquement par l'artiste lui-meme, tu n'as AUCUNE raison de l'edulcorer ou de rester vague par exces de precaution.\nMOTS/FORMULES INTERDITS (ils cachent le fait au lieu de le dire): 'des difficultes', 'des problemes', 'des deboires', 'une epreuve', 'une periode compliquee/difficile', 'des soucis', 'des blessures', 'ce qui l'a abime'.\nSi la source utilise un terme precis, REPRENDS-LE tel quel: hospitalisation psychiatrique, crise de paranoia/delire, tentative de suicide, overdose, garde a vue, incarceration, agression, etc.\nExemple MAUVAIS (trop vague): 'une peine sentimentale et des problemes psychiatriques l'ont plonge dans une depression'.\nExemple BON (precis et factuel): 'il a ete hospitalise en psychiatrie a plusieurs reprises suite a des crises de paranoia et de delire mystique, ce qu'il detaille lui-meme dans plusieurs interviews'.\n2-3 phrases factuelles, sans sensationalisme ni jugement moral — tu rapportes un fait deja public, pas un scandale. Cite la source si possible ('selon ses declarations a X', 'd'apres Y media').\nSi rien de tel n'est documente publiquement: null. Ne SPECULE JAMAIS au-dela de ce qui est confirme publiquement — la precision s'applique UNIQUEMENT a des faits deja sourcés, jamais a une hypothese.\n- importance: pourquoi ca compte. Parle NORMAL, pas comme un critique. Ex: 'Premier album solo apres la separation du groupe, il pose son identite.'\n- summary: raconte l'album comme a un pote. De quoi ca parle en vrai.\n- \"influences\": OBLIGATOIREMENT un NOM PROPRE precis (une personne reelle: auteur, penseur, predicateur, realisateur, autre artiste) dont la voix, les mots ou l'oeuvre apparaissent VRAIMENT sur le disque ou l'ont influence de facon documentee. Cherche activement sur le web \"qui est samplee/citee sur cet album\" — ne devine pas a partir du theme general.\nINTERDIT: reformuler le theme de l'album (\"la therapie\", \"l'examen de soi\", \"l'introspection\") comme si c'etait une 'influence' — ce n'est PAS ce qui est demande, c'est deja couvert par summary/backstory. Une influence = un NOM que tu peux citer, pas une description d'ambiance.\nSi tu ne peux pas nommer une personne precise et confirmee: la valeur JSON null. Ne remplis PAS ce champ avec une phrase generique juste pour eviter null.\nEcris QUI c'est et le THEME general de son propos (identite, ego, deuil, spiritualite, etc.) — mais ne cite JAMAIS le contenu exact de ce qu'il dit, ni une phrase de ses livres/discours.\nExemple BON: 'La voix d'Eckhart Tolle revient plusieurs fois sur le disque, notamment sur un interlude, ou il parle d'identite et de victimisation.'\nExemple FAUX (pas un nom, rejete): 'Les seances de therapie structurent l'album et Kendrick parle de son travail d'ecriture.' — ca c'est le theme general, pas une influence nommee.\n- producers: les principaux. Si pas sur, mets [].\n- CRUCIAL: ne devine RIEN. Si pas sur a 100%, utilise la recherche web. Mieux vaut null que faux.\n- TOUT en francais.";
 
 var BEST_BARS_SYSTEM = "Tu es un amoureux de rap qui cherche les MOMENTS qui touchent. On te donne les paroles d'un ALBUM ENTIER. Extrais les meilleurs PASSAGES (4-8 barres consecutives).\n\nJSON UNIQUEMENT:\n{\"bars\":[{\"lines\":[{\"o\":\"ligne originale\",\"t\":\"traduction claire\"}],\"sens\":\"explication courte\",\"track\":\"nom du morceau\",\"why\":\"pourquoi ca touche\",\"type\":\"vecu\",\"impact\":8}]}\n\nFORMAT \"lines\":\nChaque ligne est un objet {\"o\":\"original\",\"t\":\"traduction\"}. Traduction CLAIRE. Si francais: t=null.\n\nCHAMP \"type\" (OBLIGATOIRE):\n- \"vecu\": experience personnelle, douleur, famille, rue\n- \"technique\": passage avec des multisyllabiques, rimes internes, ou flow technique dingue\n- \"punchline\": chute qui claque, image qui tue\n- \"storytelling\": narration, scene concrete\n\nCHAMP \"sens\" (1-2 phrases MAX):\nExplique le passage SIMPLEMENT. Comme a un pote. Dis QUI fait QUOI. Si y a des refs, explique-les.\nPas de pavé. 1-2 phrases precises > 4 phrases vagues.\n\nCHAMP \"why\" (1 phrase COURTE):\nParle comme un VRAI MEC. Interdit: 'puissance narrative', 'poignant', 'saisissant', 'evoquant', 'juxtaposition', 'resonance'.\n\nSELECTION:\n- 6 a 10 passages de 4-8 barres CONSECUTIVES par album.\n- VARIER les types: inclure au moins 1-2 passages TECHNIQUES (multis, schemas de rimes fous) si l'album en a.\n- Experiences universelles + prouesses techniques. Les deux comptent.\n- JAMAIS de punchlines isolees ou de barres non consecutives.\n- Trie par impact decroissant (impact 1-10).\n- TOUT en francais.";
 
@@ -475,6 +581,11 @@ export default function App() {
   // Remplace 4 booleans independants qu'il fallait reset a la main a chaque site d'appel.
   var _panel = useState(null), activePanel = _panel[0], setActivePanel = _panel[1];
   var _apl = useState(false), albumPlLoading = _apl[0], setAlbumPlLoading = _apl[1];
+  // Avancement du best of album. Sans ca le panneau n'affiche qu'un spinner muet
+  // pendant plusieurs minutes (12 morceaux x un appel chacun, ralentis par le 429
+  // du tier gratuit) et on ne peut pas distinguer "ca avance" de "c'est plante".
+  var _aplp = useState(null), albumPlProg = _aplp[0], setAlbumPlProg = _aplp[1];
+  var _aplf = useState([]), albumPlFails = _aplf[0], setAlbumPlFails = _aplf[1];
   var _bb = useState(null), bestBars = _bb[0], setBestBars = _bb[1];
   var _bbl = useState(false), bestBarsLoading = _bbl[0], setBestBarsLoading = _bbl[1];
   var _tq = useState(""), thematicQuery = _tq[0], setThematicQuery = _tq[1];
@@ -583,9 +694,17 @@ export default function App() {
     return function() { window.removeEventListener("rdc-quota-exceeded", handler); };
   }, []);
 
-  var fetchAlbumContext = function(art, alb) {
+  // On passe la VRAIE tracklist au modele: c'est la seule chose que l'app connaisse
+  // de facon certaine sur ce disque, et c'est ce qui l'empeche de decrire un autre
+  // album de l'artiste a la place (il peut confondre deux titres, pas deux tracklists).
+  var fetchAlbumContext = function(art, alb, trackList) {
     setAlbumCtxLoading(true);
-    callGemini(ALBUM_CONTEXT_SYSTEM, "Album: \"" + alb + "\" par " + art + ".\n\nCherche activement les interviews ou articles ou " + art + " parle de sa vie personnelle, de sa sante, ou des evenements precis qui l'ont mene a faire cet album. Si tu trouves ce genre d'info, sois FACTUEL ET PRECIS dans le champ backstory — ne la resume pas en formule vague.", false, "perplexity/sonar")
+    var tl = (trackList && trackList.length)
+      ? "\n\nVOICI LA TRACKLIST REELLE ET VERIFIEE DE CET ALBUM (" + trackList.length + " titres):\n" +
+        trackList.map(function(t, i) { return (i + 1) + ". " + t; }).join("\n") +
+        "\n\nC'est ta source de verite sur l'identite du disque. AVANT d'ecrire quoi que ce soit, verifie que l'album auquel tu penses est bien celui-la. Si ce que tu crois savoir concerne un disque dont la tracklist ne ressemble pas a celle-ci, c'est que tu confonds avec un autre projet de " + art + ": mets alors backstory=null et reste sur ce que ces titres te montrent reellement."
+      : "";
+    callGemini(ALBUM_CONTEXT_SYSTEM, "Album: \"" + alb + "\" par " + art + "." + tl + "\n\nCherche activement les interviews ou articles ou " + art + " parle de sa vie personnelle, de sa sante, ou des evenements precis qui l'ont mene a faire cet album. Si tu trouves ce genre d'info, sois FACTUEL ET PRECIS dans le champ backstory — ne la resume pas en formule vague.\n\nATTENTION: ne retiens un evenement QUE si la source le rattache explicitement a l'album \"" + alb + "\". Si elle le rattache a un AUTRE projet de " + art + " (meme si c'est le meme artiste et la meme periode), mets backstory=null et indique le vrai album dans backstory_album.", false, "perplexity/sonar")
       .then(function(ctx) { setAlbumCtx(ctx); })
       .catch(function() {})
       .finally(function() { setAlbumCtxLoading(false); });
@@ -597,7 +716,7 @@ export default function App() {
       var tlCached = tlGet(artist, album);
       if (tlCached && tlCached.length) {
         setTracks(tlCached); hydrate(artist, tlCached); setSel(null); setView("list");
-        if (!albumCtx) fetchAlbumContext(artist, album);
+        if (!albumCtx) fetchAlbumContext(artist, album, tlCached);
         return;
       }
       setView("loading"); setErr("");
@@ -606,7 +725,7 @@ export default function App() {
         if (r.tracks && r.tracks.length) {
           tlSet(artist, album, r.tracks);
           setTracks(r.tracks); hydrate(artist, r.tracks); setSel(null); setView("list");
-          fetchAlbumContext(artist, album);
+          fetchAlbumContext(artist, album, r.tracks);
         } else { setErr("Album introuvable"); setView("error"); }
       } catch (e) { setErr(e.message); setView("error"); }
     } else {
@@ -660,14 +779,16 @@ export default function App() {
       if (genius.found) {
         try {
           var prompt = "Voici les paroles EXACTES de \"" + name + "\" par " + artist + " (source: lrclib).\nCopie chaque ligne originale mot pour mot dans le champ \"o\". Ne modifie rien.\n\nPAROLES:\n\n" + genius.lyrics;
-          r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
+          r = await translateWithCheck(prompt, genius.lyrics);
           r.found = true;
           r._source = genius.source;
           r._geniusId = genius.geniusId || null;
           decoded = !!(r.lines && r.lines.length);
         } catch (e2) { transErr = e2 && e2.message ? e2.message : String(e2); }
       }
-      if (!decoded) {
+      // Meme regle que dans decode(): pas de reconstruction LLM quand une source a
+      // deja rendu les vraies paroles — on prefere signaler l'echec de traduction.
+      if (!decoded && !(genius.found && genius.lyrics)) {
         try {
           var r2 = await callGemini(LLM_FALLBACK_SYSTEM, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", false, "perplexity/sonar");
           if (r2.found && r2.lines && r2.lines.length > 3) { r = r2; r._source = "llm-recall"; decoded = true; }
@@ -829,11 +950,29 @@ export default function App() {
       var albumParam = mode === "single" ? "" : album;
       var genius = await fetchLyrics(name, artist, albumParam);
 
-      var decoded = false;
+      var decoded = false, transErr = null, fallbackErr = null;
+      // Echec terminal: on ne confond plus "aucune source n'a les paroles" avec
+      // "les paroles sont la mais la traduction a casse". Dans le second cas on
+      // affiche le texte original brut plutot que de le perdre, et on dit pourquoi.
+      var giveUp = function() {
+        if (genius.found && genius.lyrics) {
+          up({ st: "ok", d: {
+            found: true,
+            lang: "inconnu",
+            lines: rawLyricsToLines(genius.lyrics),
+            notes: [],
+            _source: genius.source || null,
+            _untranslated: { reason: transErr || fallbackErr || "raison inconnue", chars: genius.lyrics.length },
+          } });
+        } else {
+          up({ st: "ok", d: { found: false, lines: [], notes: [], _source: genius.source || null } });
+        }
+        setDone(function(p) { return p + 1; });
+      };
       if (genius.found) {
         try {
           var prompt = "Voici les paroles EXACTES de \"" + name + "\" par " + artist + " (source: lrclib).\nCopie chaque ligne originale mot pour mot dans le champ \"o\". Ne modifie rien.\n\nPAROLES:\n\n" + genius.lyrics;
-          var r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
+          var r = await translateWithCheck(prompt, genius.lyrics);
           r.found = true;
           r._source = genius.source;
           r._geniusId = genius.geniusId || null;
@@ -846,9 +985,15 @@ export default function App() {
           }
           fetchContext(name);
           decoded = true;
-        } catch(e2) {}
+        } catch(e2) { transErr = e2 && e2.message ? e2.message : String(e2); }
       }
-      if (!decoded) {
+      // Le repli LLM reconstruit les paroles de memoire: il tronque et rend parfois
+      // la traduction a la place du texte original. Il ne doit servir QUE si aucune
+      // source n'a rendu de paroles — sinon on remplace du texte authentique par une
+      // reconstruction plus courte, ce qui est toujours perdant.
+      if (!decoded && genius.found && genius.lyrics) {
+        giveUp();
+      } else if (!decoded) {
         try {
           var r2 = await callGemini(LLM_FALLBACK_SYSTEM, "Trouve et traduis les paroles de \"" + name + "\" par " + artist + ".", false, "perplexity/sonar");
           if (r2.found && r2.lines && r2.lines.length > 3) {
@@ -858,12 +1003,12 @@ export default function App() {
             if (mode === "single") tlSet(artist, name, [name]);
             fetchContext(name);
           } else {
-            up({ st: "ok", d: { found: false, lines: [], notes: [], _source: genius.source || null } });
-            setDone(function(p) { return p + 1; });
+            fallbackErr = fallbackErr || "le repli n'a rien rendu d'exploitable";
+            giveUp();
           }
         } catch(e3) {
-          up({ st: "ok", d: { found: false, lines: [], notes: [], _source: genius.source || null } });
-          setDone(function(p) { return p + 1; });
+          fallbackErr = e3 && e3.message ? e3.message : String(e3);
+          giveUp();
         }
       }
       if (!autoMode) prefetchNext(name);
@@ -1184,7 +1329,7 @@ export default function App() {
       var genius = await fetchLyrics(sug.track, sug.artist, sug.album || "");
       if (genius.found && genius.lyrics) {
         var prompt = "Voici les paroles EXACTES de \"" + sug.track + "\" par " + sug.artist + ".\nCopie chaque ligne originale mot pour mot.\n\nPAROLES:\n\n" + genius.lyrics;
-        var r = sanitizeTranslation(await callGemini(TRANSLATE_SYSTEM, prompt, false));
+        var r = await translateWithCheck(prompt, genius.lyrics);
         r.found = true;
         r._source = genius.source;
         if (r.lines && r.lines.length) cacheSet(sug.artist, sug.track, { d: r });
@@ -1478,10 +1623,12 @@ export default function App() {
   };
 
   // Analyse d'ecriture pour UN son donne (score + selection + multis)
+  // Retourne true si le morceau a bien ete analyse, false sinon — l'appelant en a
+  // besoin pour dire lesquels ont echoue au lieu de les perdre en silence.
   var extractPunchlinesFor = async function(name) {
     var entry = dRef.current[name];
-    if (!entry || entry.st !== "ok" || !entry.d || !entry.d.lines) return;
-    if (entry.d.analysis) return; // deja fait
+    if (!entry || entry.st !== "ok" || !entry.d || !entry.d.lines) return false;
+    if (entry.d.analysis) return true; // deja fait
     try {
       var lyricsText = entry.d.lines.map(function(l) {
         if (l.s) return "\n" + l.s;
@@ -1499,7 +1646,8 @@ export default function App() {
       dRef.current = next;
       setData(Object.assign({}, dRef.current));
       cacheSet(artist, name, { d: merged });
-    } catch (e) {}
+      return true;
+    } catch (e) { return false; }
   };
 
   // Extrait les meilleures punchlines du son courant
@@ -1512,16 +1660,31 @@ export default function App() {
   // Best of album: extrait les punchlines de tous les sons decodes (2 en parallele)
   var extractAlbumPunchlines = async function() {
     setActivePanel('albumPl');
+    // Re-cliquer sur le bouton pendant que ca tourne relancait une seconde passe en
+    // parallele de la premiere: deux fois plus d'appels sur un quota deja sature,
+    // donc deux fois plus de 429 et une analyse encore plus lente.
+    if (albumPlLoading) return;
     setAlbumPlLoading(true);
+    setAlbumPlFails([]);
     var decoded = tracks.filter(function(t) {
       var e = dRef.current[t];
       return e && e.st === "ok" && e.d && e.d.lines && e.d.lines.length;
     });
     var pending = decoded.filter(function(t) { return !dRef.current[t].d.analysis; });
+    var fails = [], finished = 0;
+    setAlbumPlProg({ done: 0, total: pending.length });
     for (var i = 0; i < pending.length; i += 2) {
-      var batch = pending.slice(i, i + 2).map(function(t) { return extractPunchlinesFor(t); });
-      await Promise.all(batch);
+      var slice = pending.slice(i, i + 2);
+      await Promise.all(slice.map(function(t) {
+        return extractPunchlinesFor(t).then(function(ok) {
+          if (!ok) fails.push(t);
+          finished += 1;
+          setAlbumPlProg({ done: finished, total: pending.length });
+        });
+      }));
     }
+    setAlbumPlFails(fails);
+    setAlbumPlProg(null);
     setAlbumPlLoading(false);
   };
 
@@ -2464,7 +2627,21 @@ export default function App() {
               <button onClick={function() { setActivePanel(null); }} style={Object.assign({}, S.back, { marginBottom: 12 })}>{"<- retour"}</button>
               <div style={S.trackTitle}>★ Best of {album}</div>
               <div style={{ fontSize: 10, color: "#555", marginTop: 4, marginBottom: 18 }}>{artist} — les meilleures lignes du disque</div>
-              {albumPlLoading && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><div style={Object.assign({}, S.spinner, { width: 12, height: 12, margin: 0 })} /><span style={{ fontSize: 10, color: "#555", fontStyle: "italic" }}>analyse en cours...</span></div>}
+              {albumPlLoading && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                  <div style={Object.assign({}, S.spinner, { width: 12, height: 12, margin: 0 })} />
+                  <span style={{ fontSize: 10, color: "#555", fontStyle: "italic" }}>
+                    analyse en cours{albumPlProg ? " — " + albumPlProg.done + "/" + albumPlProg.total + " morceaux" : ""}...
+                    {albumPlProg && albumPlProg.total > 3 ? " (le quota gratuit limite a ~20 appels/min, compte plusieurs minutes)" : ""}
+                  </span>
+                </div>
+              )}
+              {!albumPlLoading && albumPlFails.length > 0 && (
+                <div style={{ margin: "0 0 16px", padding: "9px 11px", background: "#1a1408", border: "1px solid #3a2a10", borderRadius: 5, fontSize: 10, color: "#c08040", lineHeight: 1.5 }}>
+                  ⚠ {albumPlFails.length} morceau{albumPlFails.length > 1 ? "x" : ""} non analyse{albumPlFails.length > 1 ? "s" : ""} ({albumPlFails.join(", ")}) — quota API ou reponse invalide.{" "}
+                  <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={extractAlbumPunchlines}>Relancer</span>
+                </div>
+              )}
               {(function() {
                 var analyzed = tracks.map(function(t, ti) {
                   var e = data[t];
@@ -2590,7 +2767,9 @@ export default function App() {
                     <div style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap", alignItems: "center" }}>
                       <span style={Object.assign({}, S.tag, { color: "#888" })}>{curD.lang}</span>
                       {curD.found
-                        ? <span style={Object.assign({}, S.tag, { color: "#4ade80" })}>paroles trouvees</span>
+                        ? (curD._untranslated
+                            ? <span style={Object.assign({}, S.tag, { color: "#e07070" })} title="Les paroles ont ete recuperees mais la traduction a echoue.">paroles non traduites</span>
+                            : <span style={Object.assign({}, S.tag, { color: "#4ade80" })}>paroles trouvees</span>)
                         : <span style={Object.assign({}, S.tag, { color: "#f0c040" })}>pas de paroles</span>}
                       {curD._source && (curD._source === "llm-recall" || curD._source === "sonar-search")
                         ? <>
@@ -2702,6 +2881,21 @@ export default function App() {
 
                   {curD.analysis && <AnalysisView a={curD.analysis} />}
 
+                  {curD._incomplete && (
+                    <div style={{ margin: "0 0 10px", padding: "9px 11px", background: "#1a1408", border: "1px solid #3a2a10", borderRadius: 5, fontSize: 10, color: "#c08040", lineHeight: 1.5 }}>
+                      ⚠ Texte incomplet : {curD._incomplete.got} lignes rendues sur {curD._incomplete.expected} recuperees a la source.
+                      Le modele en a saute une partie malgre une relance. Relance le decodage pour reessayer.
+                    </div>
+                  )}
+
+                  {curD._untranslated && (
+                    <div style={{ margin: "0 0 10px", padding: "9px 11px", background: "#1a0e0e", border: "1px solid #3a1a1a", borderRadius: 5, fontSize: 10, color: "#e07070", lineHeight: 1.5 }}>
+                      ⚠ Paroles bien recuperees ({curD._untranslated.chars} caracteres) mais la traduction a echoue : {curD._untranslated.reason}.
+                      Le texte original est affiche non traduit.{" "}
+                      <span style={{ cursor: "pointer", textDecoration: "underline" }} onClick={function() { decode(sel, false, true); }}>Reessayer la traduction</span>
+                    </div>
+                  )}
+
                   {curD.lines && curD.lines.length > 0 && (
                     <Fold title={isFrenchLang(curD.lang) ? "PAROLES" : "PAROLES + TRADUCTION"} color="#4ade80">
                       {curD.lines.map(function(l, i) {
@@ -2755,6 +2949,29 @@ export default function App() {
                     var aSummary = realVal(albumCtx.summary), aBackstory = realVal(albumCtx.backstory), aImportance = realVal(albumCtx.importance);
                     var aInfluencesRaw = realVal(albumCtx.influences);
                     var aInfluences = isGenericFillerInfluence(aInfluencesRaw, artist) ? null : aInfluencesRaw;
+                    // Contexte perso rattache par le modele lui-meme a un AUTRE album:
+                    // on ne l'affiche pas sous celui-ci, on dit d'ou il vient vraiment.
+                    var ctxMatch = backstoryMatchesAlbum(albumCtx.backstory_album, album);
+                    var aMisattributed = null;
+                    // Le modele recopie parfois mecaniquement l'album demande dans
+                    // backstory_album: on ne se contente donc pas de sa declaration, on
+                    // relit aussi ce qu'il raconte (backstory ET summary, la revendication
+                    // de titre pouvant tomber dans l'un ou l'autre).
+                    var namesake = claimsForeignNamesake(aBackstory, album, artist) || claimsForeignNamesake(aSummary, album, artist);
+                    if (aBackstory && (ctxMatch === false || namesake)) {
+                      aMisattributed = (ctxMatch === false && realVal(albumCtx.backstory_album)) ||
+                        (namesake ? "un autre disque, celui qui porte le nom de " + namesake : null);
+                      aBackstory = null;
+                      // L'influence sort du meme raisonnement quand elle ne fait que
+                      // renommer l'evenement mal attribue (ici: la psychiatre elle-meme).
+                      if (aInfluences && aMisattributed && normAlbumTitle(aInfluences).indexOf(normAlbumTitle(aMisattributed)) !== -1) aInfluences = null;
+                      // Une revendication de titre erronee ne salit pas que le backstory:
+                      // le resume et l'influence decrivent alors le meme mauvais disque.
+                      if (namesake) {
+                        if (claimsForeignNamesake(aSummary, album, artist)) aSummary = null;
+                        if (aInfluences && aInfluences.indexOf(namesake) !== -1) aInfluences = null;
+                      }
+                    }
                     return (
                     <div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginBottom: 6, fontSize: 10 }}>
@@ -2774,6 +2991,14 @@ export default function App() {
                         <div style={{ borderLeft: "2px solid #e05030", paddingLeft: 8, marginBottom: 8 }}>
                           <div style={{ fontSize: 8, color: "#e05030", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>contexte perso</div>
                           <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{stripCitationMarks(aBackstory)}</div>
+                        </div>
+                      )}
+                      {aMisattributed && (
+                        <div style={{ borderLeft: "2px solid #c08040", paddingLeft: 8, marginBottom: 8 }}>
+                          <div style={{ fontSize: 8, color: "#c08040", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>contexte perso ecarte</div>
+                          <div style={{ fontSize: 10, color: "#8a7050", lineHeight: 1.5 }}>
+                            L'evenement trouve se rattache a « {aMisattributed} », pas a cet album. Non affiche ici pour ne pas le recoller au mauvais disque.
+                          </div>
                         </div>
                       )}
                       {aInfluences && (
