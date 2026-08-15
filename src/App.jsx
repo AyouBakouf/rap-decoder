@@ -565,9 +565,16 @@ async function waitRateGate() {
 // quand l'appel passe par OpenRouter — la traduction sort beaucoup de tokens et merite
 // le tarif de sortie le plus bas, l'analyse demande plus de jugement pour moins de volume.
 // Sans effet sur le tier gratuit Google, qui n'a qu'un modele.
-async function callGemini(system, message, search, model, _retries, task) {
+// _waited: secondes deja passees a patienter sur des 429 pour CET appel. Un quota
+// sature n'est pas un echec de generation, c'est une file d'attente: ce qui doit etre
+// borne est le temps qu'on accepte d'y passer, pas un nombre de tentatives. Compte
+// aussi separe de _retries, qui budgete les vraies erreurs (troncature, JSON casse) —
+// melanges, quelques 429 epuisaient le droit de reessayer une reponse tronquee.
+var RATE_MAX_WAIT_S = 300;
+async function callGemini(system, message, search, model, _retries, task, _waited) {
   if (search === undefined) search = false;
   if (_retries === undefined) _retries = 0;
+  if (_waited === undefined) _waited = 0;
   await waitRateGate();
   var payload = { system: system, message: message, search: search };
   if (TURBO) payload.viaOpenRouter = true;
@@ -580,18 +587,25 @@ async function callGemini(system, message, search, model, _retries, task) {
   });
   var data = await res.json();
   // Rate limit: on attend le delai indique par Google et on reessaie tout seul
-  if (data.rateLimited && _retries < 5) {
+  if (data.rateLimited) {
     // Le plafond etait a 45s alors que le tier gratuit demande couramment ~48s:
     // on attendait donc toujours un peu moins que necessaire, ce qui garantissait
     // un nouveau 429 a chaque tentative jusqu'a epuisement. On suit le delai
     // annonce par l'API, avec une marge, et un plafond assez haut pour le couvrir.
     var wait = Math.min((data.retryAfter || 20) + 3, 120);
-    RATE_GATE = Math.max(RATE_GATE, Date.now() + wait * 1000);
-    await waitRateGate();
-    // Repartir tous en meme temps a la seconde pres rejouerait la collision qu'on
-    // vient d'attendre: on etale les reprises sur deux secondes.
-    await new Promise(function(r) { setTimeout(r, Math.random() * 2000); });
-    return callGemini(system, message, search, model, _retries + 1, task);
+    if (_waited + wait <= RATE_MAX_WAIT_S) {
+      RATE_GATE = Math.max(RATE_GATE, Date.now() + wait * 1000);
+      await waitRateGate();
+      // Repartir tous en meme temps a la seconde pres rejouerait la collision qu'on
+      // vient d'attendre: on etale les reprises sur deux secondes.
+      await new Promise(function(r) { setTimeout(r, Math.random() * 2000); });
+      return callGemini(system, message, search, model, _retries, task, _waited + wait);
+    }
+    // A bout de patience. Le message du 429 ("reessai dans 17s") remontait tel quel
+    // comme motif d'echec DEFINITIF: il annoncait un reessai qui n'aurait jamais lieu,
+    // et laissait attendre devant un ecran qui ne bougerait plus.
+    throw new Error("quota sature, abandon apres " + Math.round(_waited) + "s d'attente"
+      + " (tier gratuit limite a 20 requetes/minute)");
   }
   if (data.error) throw new Error(data.error);
   if (data.usage) {
@@ -615,7 +629,7 @@ async function callGemini(system, message, search, model, _retries, task) {
   // sans ce garde-fou, le regex ci-dessus matche quand meme jusqu'au dernier "}" complet trouve
   // (souvent une ligne au milieu de la chanson) et affiche une traduction tronquee sans avertir.
   if (data.finishReason === "length" && _retries < 1) {
-    return callGemini(system, message, search, model, (_retries || 0) + 1, task);
+    return callGemini(system, message, search, model, (_retries || 0) + 1, task, _waited);
   }
   if (!m || data.finishReason === "length") throw new Error("Reponse tronquee (chanson trop longue pour un seul appel).");
   var attachCitations = function(obj) {
@@ -634,7 +648,7 @@ async function callGemini(system, message, search, model, _retries, task) {
       .replace(/,\s*]/g, "]")
       .replace(/[\x00-\x1f]/g, function(c) { return c === "\n" || c === "\r" || c === "\t" ? c : ""; });
     try { return attachCitations(JSON.parse(fixed)); } catch(e2) {}
-    if (_retries < 2) return callGemini(system, message, search, model, (_retries || 0) + 1, task);
+    if (_retries < 2) return callGemini(system, message, search, model, (_retries || 0) + 1, task, _waited);
     throw jsonErr;
   }
 }
