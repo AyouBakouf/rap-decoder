@@ -1084,6 +1084,7 @@ export default function App() {
             lines: rawLyricsToLines(genius.lyrics),
             notes: [],
             _source: genius.source || null,
+            _matched: genius.matched || null,
             _untranslated: { reason: transErr || fallbackErr || "raison inconnue", chars: genius.lyrics.length },
           } });
         } else {
@@ -1097,6 +1098,7 @@ export default function App() {
           var r = await translateWithCheck(prompt, genius.lyrics);
           r.found = true;
           r._source = genius.source;
+          r._matched = genius.matched || null;
           r._geniusId = genius.geniusId || null;
           up({ st: "ok", d: r }); setDone(function(p) { return p + 1; });
           if (r.lines && r.lines.length) {
@@ -2941,6 +2943,22 @@ export default function App() {
                             ? <span style={Object.assign({}, S.tag, { color: "#e07070" })} title="Les paroles ont ete recuperees mais la traduction a echoue.">paroles non traduites</span>
                             : <span style={Object.assign({}, S.tag, { color: "#4ade80" })}>paroles trouvees</span>)
                         : <span style={Object.assign({}, S.tag, { color: "#f0c040" })}>pas de paroles</span>}
+                      {(function() {
+                        // La base de paroles peut avoir servi un AUTRE morceau que celui
+                        // demande. C'etait totalement muet: on affichait des paroles
+                        // etrangeres comme si elles etaient les bonnes.
+                        var m = curD._matched;
+                        if (!m || !m.artist) return null;
+                        var same = function(x, y) { return norm(x || "") === norm(y || ""); };
+                        if (same(m.artist, artist) && same(m.track, sel)) return null;
+                        return (
+                          <span style={Object.assign({}, S.tag, { color: "#e07070", cursor: "pointer", textDecoration: "underline" })}
+                            title={"Les paroles servies sont taguees « " + m.artist + " — " + m.track + " », pas « " + artist + " — " + sel + " ». Clique pour relancer la recherche."}
+                            onClick={function() { decode(sel, false, true); }}>
+                            ⚠ {m.artist} — {m.track}
+                          </span>
+                        );
+                      })()}
                       {curD._source && (curD._source === "llm-recall" || curD._source === "sonar-search")
                         ? <>
                             <span style={Object.assign({}, S.tag, { color: "#f0c040" })} title="Paroles trouvees par l'IA via recherche web, pas depuis une base de paroles classique — verifie si un doute, de petites imprecisions restent possibles.">reconstruction IA</span>

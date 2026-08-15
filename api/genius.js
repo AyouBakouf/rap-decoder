@@ -53,8 +53,15 @@ async function runLookup(title, artist, token, res) {
       if (cand && cand.length > lyrics.length) lyrics = cand;
       return lyrics.length >= MIN_FULL_LYRICS;
     };
-    var enough = keep(await fetchFromLrclib(songArtist, songTitle), "lrclib(canonical)");
-    if (!enough && song) enough = keep(await fetchFromLrclib(artist, title), "lrclib(original)");
+    var matched = null;
+    var lr = await fetchFromLrclib(songArtist, songTitle);
+    var enough = keep(lr.text, "lrclib(canonical)");
+    if (lr.text && lyrics === lr.text) matched = { artist: lr.artist, track: lr.track, via: "lrclib" };
+    if (!enough && song) {
+      var lr2 = await fetchFromLrclib(artist, title);
+      enough = keep(lr2.text, "lrclib(original)");
+      if (lr2.text && lyrics === lr2.text) matched = { artist: lr2.artist, track: lr2.track, via: "lrclib" };
+    }
     if (!enough) enough = keep(await fetchFromLyricsOvh(songArtist, songTitle), "lyricsovh(canonical)");
     if (!enough) enough = keep(await fetchFromLyricsOvh(artist, title), "lyricsovh(original)");
     if (!enough) {
@@ -88,7 +95,7 @@ async function runLookup(title, artist, token, res) {
     // que le client sache qu'il n'a pas un morceau complet entre les mains.
     return res.status(200).json({
       found: true, lyrics: cleanLyrics(lyrics), source: srcUrl,
-      partial: !enough, chars: lyrics.length,
+      partial: !enough, chars: lyrics.length, matched: matched,
       title: songTitle, artist: songArtist, geniusId: song ? song.id : null, _debug: dbg,
     });
   } catch (e) { return res.status(500).json({ error: e.message, _debug: dbg }); }
@@ -108,13 +115,33 @@ function cleanLyrics(text) {
 // Cle de comparaison pour lrclib: on retire d'abord les mentions qui varient d'une
 // base a l'autre pour le meme morceau (feat., (Remastered), [Bonus]) avant de slugifier.
 function lrclibKey(s) {
-  return toSlug(String(s || "")
+  var slug = toSlug(String(s || "")
     .replace(/\(.*?\)|\[.*?]/g, " ")
     .replace(/\b(feat|ft|featuring|prod|remaster(ed)?|version|edit)\b.*/gi, " "));
+  // Article initial retire des deux cotes: les catalogues hesitent entre "The Score"
+  // et "Score". Le faire ici plutot que de relacher le seuil de ressemblance, qui
+  // rouvrirait la porte aux rapprochements hasardeux qu'on cherche justement a fermer.
+  var stripped = slug.replace(/^(the|a|an|le|la|les|un|une|los|las|el)-/, "");
+  return stripped || slug;
 }
+// L'inclusion nue ("l'un contient l'autre") n'est un indice d'identite que si le plus
+// court est assez discriminant. Sur un nom court elle ne filtre plus rien: l'artiste
+// "Ka" est contenu dans des centaines de noms sans rapport (Kanye, Sakamoto, Kaytranada),
+// donc tout passait, et l'heuristique "le plus long gagne" juste apres allait
+// justement elire le morceau etranger le plus fourni. Vu sur Ka - "I Wish", servi avec
+// les paroles d'une chanson de R&B qui n'a rien a voir.
+// On exige donc que la partie commune pese vraiment dans le nom le plus long, avec un
+// plancher absolu en dessous duquel seule l'egalite exacte compte.
+var LOOSE_MIN_CHARS = 4;
+var LOOSE_MIN_RATIO = 0.6;
 function matchesLoosely(a, b) {
   if (!a || !b) return false;
-  return a.indexOf(b) !== -1 || b.indexOf(a) !== -1;
+  if (a === b) return true;
+  var shorter = a.length <= b.length ? a : b;
+  var longer = a.length <= b.length ? b : a;
+  if (shorter.length < LOOSE_MIN_CHARS) return false;
+  if (shorter.length < longer.length * LOOSE_MIN_RATIO) return false;
+  return longer.indexOf(shorter) !== -1;
 }
 // Les entrees synchronisees stockent le texte prefixe de timestamps [00:12.34].
 function stripLrcTimestamps(s) {
@@ -147,15 +174,17 @@ async function fetchFromLrclib(artist, title) {
     // tronquees ou mal taguees (vu sur "2007" de JID: une entree a 767 caracteres, une autre a
     // 7591 pour le meme artiste+titre). La plus courte est presque toujours tronquee/fausse —
     // on prend celle avec le plus de texte plutot que la premiere renvoyee par l'API.
-    var best = "";
+    var best = "", bestOn = null;
     for (var i = 0; i < candidates.length; i++) {
       // A defaut de texte brut, la version synchronisee contient les memes paroles.
       var text = candidates[i].plainLyrics || stripLrcTimestamps(candidates[i].syncedLyrics);
-      if (text && text.length > best.length) best = text;
+      if (text && text.length > best.length) { best = text; bestOn = candidates[i]; }
     }
-    if (best.length > 30) return best;
+    // On remonte SUR QUOI on a atterri, pas seulement le texte: un mauvais
+    // rapprochement ne se voyait nulle part, ni dans la reponse ni a l'ecran.
+    if (best.length > 30) return { text: best, artist: bestOn.artistName, track: bestOn.trackName };
   } catch (e) {}
-  return "";
+  return { text: "", artist: null, track: null };
 }
 async function fetchFromLyricsOvh(artist, title) {
   try {
